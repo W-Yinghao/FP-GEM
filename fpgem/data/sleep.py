@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 from pathlib import Path
 
@@ -104,7 +105,7 @@ def build_recording(subject: int, night: int, out: Path | None = None) -> Path:
         raise RuntimeError(f"{psg.name}: non-finite samples")
     out = out or cache_dir("Sleep") / f"sub{subject:02d}_n{night}.npz"
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(out.stem + ".tmp.npz")
+    tmp = out.with_name(f"{out.stem}.{os.getpid()}.tmp.npz")          # unique per writer
     np.savez(tmp, X=X, y=lab[idx], record_index=idx.astype(np.int32),
              order_in_session=np.arange(len(idx), dtype=np.int32),
              subject=np.full(len(idx), subject, dtype=np.int16), night=np.full(len(idx), night, dtype=np.int8),
@@ -115,25 +116,36 @@ def build_recording(subject: int, night: int, out: Path | None = None) -> Path:
     return out
 
 
-def load_subject(subject: int, nights=(1, 2), channels=MODEL_CHANNELS) -> dict:
+def load_subject(subject: int, nights=None, channels=MODEL_CHANNELS) -> dict:
+    """All cached epochs of `subject` for `nights` (default: every night the subject has). Missing cache
+    files raise. Labels: 0..4, -1 for unscored/movement epochs (kept, never used for training/scoring)."""
+    recs = recordings()
+    nights = nights or sorted(n for (s, n) in recs if s == subject)
     parts = []
     for n in nights:
+        if (subject, n) not in recs:
+            raise FileNotFoundError(f"Sleep subject {subject} has no night {n}")
         p = cache_dir("Sleep") / f"sub{subject:02d}_n{n}.npz"
-        if p.exists():
-            parts.append(np.load(p, allow_pickle=False))
-    if not parts:
-        raise FileNotFoundError(f"Sleep subject {subject}: no cached nights")
+        if not p.exists():
+            raise FileNotFoundError(p)
+        parts.append(np.load(p, allow_pickle=False))
     cat = lambda k: np.concatenate([z[k] for z in parts])
+    rec = cat("record_index")
+    y = cat("y").astype(np.int64)
     return dict(
         X=np.ascontiguousarray(np.concatenate([z["X"][:, channels] for z in parts])),
-        y=cat("y").astype(np.int64),
+        y=y,
+        y_orig=y.copy(),
+        in_label_set=np.ones(len(y), dtype=bool),
         subject=cat("subject").astype(np.int64),
         session=np.array([str(int(v)) for v in cat("night")]),
         run=np.array([str(int(v)) for v in cat("night")]),
-        phase=np.array(["night"] * sum(len(z["y"]) for z in parts)),
+        phase=np.array(["night"] * len(y)),
         order_in_session=cat("order_in_session"),
         order_in_run=cat("order_in_session"),
-        record_index=cat("record_index"),
+        onset_s=rec.astype(np.float64) * EPOCH_S,
+        record_index=rec,
+        truncated_night=np.concatenate([np.full(len(z["y"]), bool(z["truncated"])) for z in parts]),
         channels=[CHANNELS[c] for c in channels],
         classes=CLASSES,
         sfreq=float(SFREQ),
@@ -141,9 +153,16 @@ def load_subject(subject: int, nights=(1, 2), channels=MODEL_CHANNELS) -> dict:
 
 
 def write_manifest() -> Path:
+    """Hash every cache file; refuse unless the file set is exactly one file per recording."""
     from ..provenance import sha256_file
     d = cache_dir("Sleep")
-    man = {f.name: sha256_file(f) for f in sorted(d.glob("sub*_n*.npz")) if not f.name.endswith(".tmp.npz")}
+    if list(d.glob("*.tmp.npz")):
+        raise RuntimeError(f"{d}: temporary files present; a builder is still running")
+    files = sorted(d.glob("sub*_n*.npz"))
+    expected = {f"sub{s:02d}_n{n}.npz" for (s, n) in recordings()}
+    if {f.name for f in files} != expected:
+        raise RuntimeError(f"Sleep cache incomplete: missing {sorted(expected - {f.name for f in files})}")
+    man = {f.name: sha256_file(f) for f in files}
     p = d / "MANIFEST.json"
     with open(p, "w") as f:
         json.dump(man, f, indent=1, sort_keys=True)

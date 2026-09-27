@@ -31,9 +31,10 @@ def main(argv=None):
             continue
         dj = json.load(open(done))
         mj = json.load(open(d / "metrics.json"))
+        sj = json.load(open(d / "sanity_target.json"))       # target-side values: read only here, after the fleet
         ds, ls, bb, t, s = u.split("-")
         rows.append(dict(unit=u, dataset=ds, label_set=ls, backbone=bb, target=int(t[1:]), seed=int(s[1:]),
-                         sanity_eval_bacc=mj["sanity_eval_bacc"], best_val_bacc=mj["best_val_bacc"],
+                         sanity_eval_bacc=sj["sanity_eval_bacc"], best_val_bacc=mj["best_val_bacc"],
                          best_epoch=mj["best_epoch"], epochs_run=mj["epochs_run"], seconds=dj["seconds"],
                          gpu=dj["gpu"], git_sha=dj["git_sha"][:12], replay=dj["replay_bit_exact"]))
     out = Path(a.out)
@@ -64,7 +65,7 @@ def main(argv=None):
     lines += ["", "`best epoch >= 95`: units whose selected epoch is at the 100-epoch cap (validation bAcc still rising; "
               "possible under-training, reported as a QC diagnostic, not acted on).",
               "", "Sanity eval bAcc: EEGNet/Chambon = eval-mode network with source normalisation; TSMNet = each target "
-              "session re-centred on its own unlabeled data (standard TSMNet inference).", ""]
+              "session re-centred on its own label-set trials (standard TSMNet inference).", ""]
     if missing:
         lines += ["## Missing units", ""] + [f"- {m}" for m in missing]
     (out / "W1_COVERAGE.md").write_text("\n".join(lines) + "\n")

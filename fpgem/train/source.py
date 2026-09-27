@@ -215,9 +215,13 @@ def dump_tsmnet(u: Unit, model, data: dict, masks: dict, device, K: int) -> tupl
     z = torch.zeros(len(dom), q * (q + 1) // 2, dtype=torch.float64)
     logits = torch.zeros(len(dom), K, dtype=torch.float64)
     dom_mean, dom_var = {}, {}
-    for du in np.unique(dom):               # every domain re-centred on its own (unlabeled) data
+    in_set = torch.as_tensor(data["in_label_set"])
+    for du in np.unique(dom):               # every domain re-centred on its own trials of the label set
         m = d == int(du)
-        mean, var = M.tsmnet_refit_domain(model, S[m], int(du))
+        fit = m & in_set
+        if int(fit.sum()) < 2:
+            raise ProvenanceError(f"domain {int(du)}: {int(fit.sum())} trials to re-centre on")
+        mean, var = M.tsmnet_refit_domain(model, S[fit], int(du))
         dom_mean[int(du)], dom_var[int(du)] = mean.squeeze(0).numpy(), var.reshape(-1).numpy()
         zz, ll = M.tsmnet_head(model, S[m], d[m])
         z[m], logits[m] = zz, ll
@@ -226,6 +230,23 @@ def dump_tsmnet(u: Unit, model, data: dict, masks: dict, device, K: int) -> tupl
                  domain_var=np.concatenate([dom_var[k] for k in sorted(dom_var)]),
                  bn_std=model.spddsbnorm.std.detach().reshape(-1).numpy())
     return extra, stats
+
+
+def replay_tsmnet(spec: dict, ckpt: Path, S: np.ndarray, dom: np.ndarray, stats: dict) -> tuple:
+    """Recompute (z, logits) on CPU from the dumped artifacts only: checkpoint + domain statistics + S."""
+    fresh = rebuild(spec, torch.device("cpu"))
+    fresh.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=True))
+    fresh.eval()
+    for i, did in enumerate(stats["domain_ids"]):
+        bnd = fresh.spddsbnorm.get_domain_obj(torch.tensor(int(did)))
+        bnd.running_mean_test.data = torch.as_tensor(stats["domain_mean"][i])[None].clone()
+        bnd.running_var_test = torch.as_tensor(stats["domain_var"][i]).reshape(1, 1).clone()
+    z, lg = M.tsmnet_head(fresh, torch.as_tensor(S), torch.as_tensor(dom))
+    return z.numpy(), lg.numpy()
+
+
+def expected_rows(ds: str, subject: int) -> int:
+    return int(sum(len(np.load(cache_dir(ds) / f, allow_pickle=False)["y"]) for f in D.cache_files(ds, subject)))
 
 
 # ------------------------------------------------------------------ EEGNet / Chambon
@@ -324,14 +345,18 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
     gpu = torch.cuda.get_device_name(0)
     log(f"unit {uid} sha {sha[:12]} gpu {gpu} host {socket.gethostname()}")
 
+    D.validate_config(cfg)
     split = make_split(u.ds, u.target, u.seed, cfg["training"]["val_fraction_subjects"])
     subjects = split["train"] + split["val"] + [u.target]
+    cache_hashes = D.verify_cache(u.ds, subjects)             # every file used == MANIFEST entry
     data = D.load(u.ds, u.label_set, subjects)
+    for s in subjects:                                        # no silent row loss in the loader
+        if int((data["subject"] == s).sum()) != expected_rows(u.ds, s):
+            raise ProvenanceError(f"subject {s}: loaded rows != cached rows")
     subj = data["subject"]
     masks = dict(train=np.isin(subj, split["train"]), val=np.isin(subj, split["val"]), target=subj == u.target)
-    if u.ds == "Sleep":                                   # train/select on scored epochs only
-        masks["train"] &= data["y"] >= 0
-        masks["val"] &= data["y"] >= 0
+    masks["train"] &= data["y"] >= 0                      # label set only (B14-c2) and scored epochs only (Sleep)
+    masks["val"] &= data["y"] >= 0
     # leakage invariants (fail loud)
     if np.any(masks["target"] & (masks["train"] | masks["val"])):
         raise ProvenanceError("target rows in train/val")
@@ -339,8 +364,6 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
         raise ProvenanceError("split manifest does not match loaded data")
     K = len(data["classes"])
     manifest = cache_dir(u.ds) / "MANIFEST.json"
-    if not manifest.exists():
-        raise ProvenanceError(f"missing cache manifest {manifest}")
     log(f"split train={split['train']} val={split['val']} target={u.target} n_train={masks['train'].sum()} n_val={masks['val'].sum()} n_target={masks['target'].sum()}")
 
     if u.backbone == "tsmnet":
@@ -356,21 +379,22 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
         np.savez(out / "norm.npz", mean=norm[0], std=norm[1])
 
     # ---------------- dumps
-    meta_keys = ["y", "subject", "session", "run", "phase", "order_in_session", "order_in_run"] + (
-        ["record_index"] if u.ds == "Sleep" else [])
+    meta_keys = D.META_KEYS + (["record_index", "truncated_night"] if u.ds == "Sleep" else [])
     role = np.where(masks["target"], "target", np.where(np.isin(subj, split["train"]), "train", "val"))
     rows_src = ~masks["target"]
     if u.backbone == "tsmnet":
         extra, stats = dump_tsmnet(u, model, data, masks, device, K)
         np.savez(out / "domain_stats.npz", **stats)
+        z_r, lg_r = replay_tsmnet(spec, out / "ckpt.pt", extra["S"], extra["domain"], stats)   # gate 3, all rows
+        err = max(float(np.max(np.abs(lg_r - extra["logits"]))), float(np.max(np.abs(z_r - extra["z"]))))
     else:
         Xn = (data["X"] - norm[0][None, :, None]) / norm[1][None, :, None]
         z, logits = M.braindecode_forward(model, Xn, device)
         extra = dict(z=z, logits=logits)
-        rep = M.replay_head(model, z[masks["target"]], u.backbone, device)
-        err = float(np.max(np.abs(rep - logits[masks["target"]])))
-        if err > 1e-5:
-            raise ProvenanceError(f"classifier replay mismatch {err}")
+        rep = M.replay_head(model, z, u.backbone, device)                                     # gate 3, all rows
+        err = float(np.max(np.abs(rep - logits)))
+    if not err <= 1e-5:
+        raise ProvenanceError(f"classifier replay mismatch {err}")
     for name, rows in (("dump_target.npz", masks["target"]), ("dump_source.npz", rows_src)):
         arrs = {k: data[k][rows] for k in meta_keys}
         arrs.update({k: v[rows] for k, v in extra.items()})
@@ -392,21 +416,29 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
 
     # ---------------- descriptive sanity (pre-reg §7): evaluation session/night of the target
     ev = masks["target"] & (D.session_index(u.ds, data["session"]) == 1) & (data["y"] >= 0)
-    pred = extra["logits"][ev].argmax(1)
+    ad = masks["target"] & (D.session_index(u.ds, data["session"]) == 0)
+    if ev.sum() == 0 or ad.sum() == 0:
+        raise ProvenanceError(f"target has {int(ad.sum())} adaptation / {int(ev.sum())} evaluation rows")
+    sanity = balanced_accuracy(data["y"][ev], extra["logits"][ev].argmax(1), K)
+    if not np.isfinite(sanity):
+        raise ProvenanceError("non-finite sanity value")
+    # target-side sanity lives in its own file, read only by scripts/summarize_w1.py after the fleet
+    write_json(out / "sanity_target.json", dict(
+        unit=uid, sanity_eval_bacc=sanity, sanity_eval_n=int(ev.sum()),
+        sanity_note=("TSMNet: each target session re-centred on its own label-set trials (standard TSMNet inference)"
+                     if u.backbone == "tsmnet" else "eval-mode network, source normalisation")))
     best_ep = select_epoch(hist)
-    metrics = dict(
-        unit=uid, sanity_eval_bacc=balanced_accuracy(data["y"][ev], pred, K), sanity_eval_n=int(ev.sum()),
-        sanity_note=("TSMNet: each target session re-centred on its own unlabeled data (standard TSMNet inference)"
-                     if u.backbone == "tsmnet" else "eval-mode network, source normalisation"),
-        best_epoch=best_ep, best_val_loss=hist[best_ep]["val_loss"], best_val_bacc=hist[best_ep]["val_bacc"],
-        epochs_run=len(hist), history=hist)
+    metrics = dict(unit=uid, best_epoch=best_ep, best_val_loss=hist[best_ep]["val_loss"],
+                   best_val_bacc=hist[best_ep]["val_bacc"], epochs_run=len(hist), replay_max_abs_err=err,
+                   n_rows=dict(target=int(masks["target"].sum()), source=int((~masks["target"]).sum())),
+                   history=hist)
     write_json(out / "metrics.json", metrics)
     files = {f.name: sha256_file(f) for f in sorted(out.iterdir()) if f.suffix in (".pt", ".npz", ".json") and f.name != "DONE.json"}
     write_json(done, dict(
         status="ok", unit=uid, wave=wave, git_sha=sha, code_sig=code_sig(), cache_manifest_sha256=sha256_file(manifest),
         torch=torch.__version__, python=platform.python_version(), gpu=gpu, host=socket.gethostname(),
         slurm_job=os.environ.get("SLURM_JOB_ID"), seconds=round(time.time() - t_start, 1),
-        replay_bit_exact=replay_ok, sanity_eval_bacc=metrics["sanity_eval_bacc"], files=files))
+        replay_bit_exact=replay_ok, cache_files=cache_hashes, files=files))
     log(f"DONE {uid} best_epoch={best_ep} val_bacc={metrics['best_val_bacc']:.3f} ({time.time() - t_start:.0f}s)")
     logf.close()
     return dict(status="ok", unit=uid)

@@ -62,9 +62,39 @@ def _check_files(key: str, subject: int) -> None:
                 raise FileNotFoundError(p)
 
 
+EXPECTED = {  # trials per subject per session per class (protocol cue schedule); fail loud otherwise
+    "B14": 72,
+    "Lee": 100,   # 50 offline + 50 online per class and session
+}
+
+
+def _run_events(ds, subject: int) -> tuple[dict, list[str]]:
+    """Cue onsets (s from run start) and class names for every (session, run), read from the raw stim
+    channel, plus the EEG channel names in MOABB order."""
+    import mne
+    raws = ds.get_data(subjects=[subject])[subject]
+    inv = {v: k for k, v in ds.event_id.items()}
+    out, ch_names = {}, None
+    for sess, runs in raws.items():
+        for run, raw in runs.items():
+            ev = mne.find_events(raw, shortest_event=0, verbose=False)
+            ev = ev[np.isin(ev[:, 2], list(ds.event_id.values()))]
+            onset = (ev[:, 0] - raw.first_samp) / raw.info["sfreq"] + ds.interval[0]
+            out[(str(sess), str(run))] = (onset, [inv[c] for c in ev[:, 2]])
+            if ch_names is None:
+                picks = mne.pick_types(raw.info, eeg=True, stim=False, eog=False, emg=False)
+                ch_names = [raw.ch_names[i] for i in picks]
+    return out, ch_names
+
+
 def build_subject(key: str, subject: int, out: Path | None = None) -> Path:
     """Build and write the cache npz for one subject. Returns the path."""
+    import mne
+    import moabb
+    import scipy
     from moabb.paradigms import MotorImagery
+
+    from ..provenance import git_sha
 
     spec = SPECS[key]
     _check_files(key, subject)
@@ -84,61 +114,73 @@ def build_subject(key: str, subject: int, out: Path | None = None) -> Path:
     run = meta["run"].astype(str).to_numpy().astype("U")
     if not (meta["subject"].to_numpy() == subject).all():
         raise RuntimeError("MOABB returned another subject")
-    # chronological indices: MOABB orders session -> run (insertion order) -> events in time
+    # expected protocol counts (no silent epoch drops)
+    for s in np.unique(session):
+        cnt = np.bincount(yi[session == s], minlength=len(spec["classes"]))
+        if not np.all(cnt == EXPECTED[key]):
+            raise RuntimeError(f"{key} s{subject} session {s}: class counts {cnt.tolist()} != {EXPECTED[key]}")
+    if len(np.unique(session)) != 2:
+        raise RuntimeError(f"{key} s{subject}: sessions {np.unique(session)}")
+    # chronological indices + cue onsets; MOABB orders session -> run (insertion order) -> events in time
+    events, raw_ch = _run_events(ds, subject)
     order_in_session = np.zeros(len(yi), dtype=np.int32)
     order_in_run = np.zeros(len(yi), dtype=np.int32)
+    onset = np.zeros(len(yi), dtype=np.float64)
     for s in np.unique(session):
         m = np.flatnonzero(session == s)
         order_in_session[m] = np.arange(len(m))
         for r in np.unique(run[m]):
             mr = m[run[m] == r]
             order_in_run[mr] = np.arange(len(mr))
+            ons, names = events[(str(s), str(r))]
+            names_cached = [spec["classes"][v] for v in yi[mr]]
+            if names != names_cached:                                    # alignment check: same labels, same order
+                raise RuntimeError(f"{key} s{subject} {s}/{r}: raw event sequence does not match the epochs")
+            onset[mr] = ons
     phase = np.array(["online" if "test" in r else "offline" for r in run]) if key == "Lee" else np.array(["offline"] * len(run))
-    ch_names = spec["channels"] or list(ds_channel_names(ds, subject))
+    ch_names = spec["channels"] or raw_ch
     if X.shape[1] != len(ch_names):
         raise RuntimeError(f"channel count {X.shape[1]} != {len(ch_names)}")
 
     out = out or cache_dir(key) / f"sub{subject:02d}.npz"
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(out.stem + ".tmp.npz")
+    tmp = out.with_name(f"{out.stem}.{os.getpid()}.tmp.npz")          # unique per writer
     for k, v in dict(session=session, run=run, phase=phase).items():
         if v.dtype.kind != "U":
             raise RuntimeError(f"{k} has dtype {v.dtype}; must be unicode")
+    build = json.dumps(dict(git_sha=git_sha(), moabb=moabb.__version__, mne=mne.__version__, numpy=np.__version__,
+                            scipy=scipy.__version__, band_hz=[4.0, 36.0], window_s=[CACHE_T0, CACHE_T0 + CACHE_N / SFREQ],
+                            resample=spec["resample"]), sort_keys=True)
     np.savez(tmp, X=X, y=yi, session=session, run=run, phase=phase, order_in_session=order_in_session,
-             order_in_run=order_in_run, subject=np.full(len(yi), subject, dtype=np.int16),
+             order_in_run=order_in_run, onset_s=onset, subject=np.full(len(yi), subject, dtype=np.int16),
              sfreq=np.float32(SFREQ), t0=np.float32(CACHE_T0), channels=np.array(ch_names),
-             classes=np.array(spec["classes"]))
+             classes=np.array(spec["classes"]), build=np.array(build))
     tmp.replace(out)
     return out
 
 
-def ds_channel_names(ds, subject: int) -> list[str]:
-    """EEG channel names in MOABB paradigm order (used only when `channels=None`)."""
-    raws = ds.get_data(subjects=[subject])[subject]
-    raw = next(iter(next(iter(raws.values())).values()))
-    import mne
-    picks = mne.pick_types(raw.info, eeg=True, stim=False, eog=False, emg=False)
-    return [raw.ch_names[i] for i in picks]
-
-
 def load_subject(key: str, subject: int, classes: list[str] | None = None, window_s=(0.5, 3.5)) -> dict:
-    """Load one cached subject restricted to `classes` (re-indexed 0..K-1) and cropped to `window_s`."""
+    """Load one cached subject cropped to `window_s`. All trials are returned; `y` is the index in
+    `classes` (or -1 for trials outside the label set), `y_orig` the dataset-level class index."""
     z = np.load(cache_dir(key) / f"sub{subject:02d}.npz", allow_pickle=False)
     all_classes = list(z["classes"])
     classes = classes or all_classes
-    keep = np.isin(z["y"], [all_classes.index(c) for c in classes])
     remap = {all_classes.index(c): i for i, c in enumerate(classes)}
     i0 = int(round((window_s[0] - float(z["t0"])) * float(z["sfreq"])))
     i1 = i0 + int(round((window_s[1] - window_s[0]) * float(z["sfreq"])))
+    y = np.array([remap.get(int(v), -1) for v in z["y"]], dtype=np.int64)
     out = dict(
-        X=np.ascontiguousarray(z["X"][keep][..., i0:i1]),
-        y=np.array([remap[v] for v in z["y"][keep]], dtype=np.int64),
-        subject=z["subject"][keep].astype(np.int64),
-        session=z["session"][keep],
-        run=z["run"][keep],
-        phase=z["phase"][keep],
-        order_in_session=z["order_in_session"][keep],
-        order_in_run=z["order_in_run"][keep],
+        X=np.ascontiguousarray(z["X"][..., i0:i1]),
+        y=y,
+        y_orig=z["y"].astype(np.int64),
+        in_label_set=y >= 0,
+        subject=z["subject"].astype(np.int64),
+        session=z["session"],
+        run=z["run"],
+        phase=z["phase"],
+        order_in_session=z["order_in_session"],
+        order_in_run=z["order_in_run"],
+        onset_s=z["onset_s"],
         channels=list(z["channels"]),
         classes=classes,
         sfreq=float(z["sfreq"]),
@@ -147,10 +189,16 @@ def load_subject(key: str, subject: int, classes: list[str] | None = None, windo
 
 
 def write_manifest(key: str) -> Path:
+    """Hash every cache file; refuse unless the file set is exactly the expected subject set."""
     from ..provenance import sha256_file
     d = cache_dir(key)
+    if list(d.glob("*.tmp.npz")):
+        raise RuntimeError(f"{d}: temporary files present; a builder is still running")
     files = sorted(d.glob("sub*.npz"))
-    man = {f.name: sha256_file(f) for f in files if not f.name.endswith(".tmp.npz")}
+    expected = {f"sub{s:02d}.npz" for s in SPECS[key]["subjects"]}
+    if {f.name for f in files} != expected:
+        raise RuntimeError(f"{key} cache incomplete: missing {sorted(expected - {f.name for f in files})}")
+    man = {f.name: sha256_file(f) for f in files}
     p = d / "MANIFEST.json"
     with open(p, "w") as f:
         json.dump(man, f, indent=1, sort_keys=True)

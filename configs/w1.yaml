@@ -82,7 +82,7 @@ training:
   val_fraction_subjects: 0.2       # participant-level validation, drawn with rng([seed, target])
   max_epochs: 100
   min_epochs: 30
-  patience: 20                     # epochs without improvement of the selection key (after min_epochs)
+  patience: 20                     # A2: counted from the last improvement at any epoch; stopping only once epoch+1 >= min_epochs
   selection: max_val_bacc          # appendum A1: max validation bAcc, ties -> lower val loss; target data never used
   deterministic: true              # CUBLAS_WORKSPACE_CONFIG=:4096:8, cudnn deterministic, TF32 off
 

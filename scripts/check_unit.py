@@ -54,6 +54,9 @@ def check(wave: str, uid: str) -> dict:
     for s in split["val"]:
         if not np.all(S_["role"][S_["subject"] == s] == "val"):
             P.append(f"role mismatch for val subject {s}")
+    for s in split["train"]:
+        if not np.all(S_["role"][S_["subject"] == s] == "train"):
+            P.append(f"role mismatch for train subject {s}")
     K = len(D.LABEL_SETS[(u.ds, u.label_set)])
     for Z in (T, S_):
         if Z["y"].min() < -1 or Z["y"].max() >= K:

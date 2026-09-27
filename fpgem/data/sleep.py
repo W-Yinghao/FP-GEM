@@ -83,6 +83,8 @@ def build_recording(subject: int, night: int, out: Path | None = None) -> Path:
     n_records = data.shape[1] // EPOCH_N
 
     lo_s = (_lights_off()[(subject, night)] - _edf_start_clock(psg)) % 86400
+    if lo_s >= 16 * 3600:                                           # guard the modulo against day wrap-around
+        raise RuntimeError(f"{psg.name}: lights-off {lo_s / 3600:.1f} h after recording start")
     if lo_s % EPOCH_S:
         raise RuntimeError(f"{psg.name}: lights-off not on the 30-s grid ({lo_s} s)")
     i0 = lo_s // EPOCH_S

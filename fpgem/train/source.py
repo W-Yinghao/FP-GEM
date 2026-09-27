@@ -147,7 +147,7 @@ def domain_batches(dom: np.ndarray, y: np.ndarray, per_domain: int, domains_per_
 
 def tsmnet_val(model, X, y, dom, device, K) -> tuple[float, float]:
     model.eval()
-    S = M.tsmnet_prebn(model, X, device)
+    S = M.tsmnet_prebn(model, X, device, groups=dom // 10)
     d = torch.as_tensor(dom)
     for du in np.unique(dom):
         M.tsmnet_refit_domain(model, S[d == int(du)], int(du))
@@ -209,7 +209,7 @@ def train_tsmnet(u: Unit, cfg: dict, data: dict, masks: dict, device, log) -> tu
 def dump_tsmnet(u: Unit, model, data: dict, masks: dict, device, K: int) -> tuple[dict, dict]:
     sess = D.session_index(u.ds, data["session"])
     dom = data["subject"] * 10 + sess
-    S = M.tsmnet_prebn(model, data["X"], device)
+    S = M.tsmnet_prebn(model, data["X"], device, groups=data["subject"])
     d = torch.as_tensor(dom)
     q = model.subspacedimes
     z = torch.zeros(len(dom), q * (q + 1) // 2, dtype=torch.float64)
@@ -313,6 +313,7 @@ def train_braindecode(u: Unit, cfg: dict, data: dict, masks: dict, device, log) 
     if u.backbone == "eegnet":
         M.stabilize_renorm(model, X.shape[1], X.shape[2], device)
     spec["class_weights"] = None if w is None else w.cpu().numpy().tolist()
+    spec["add_log_softmax"] = bool(getattr(model, "add_log_softmax", False))
     return model, spec, hist, (mu, sd)
 
 
@@ -389,7 +390,7 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
         err = max(float(np.max(np.abs(lg_r - extra["logits"]))), float(np.max(np.abs(z_r - extra["z"]))))
     else:
         Xn = (data["X"] - norm[0][None, :, None]) / norm[1][None, :, None]
-        z, logits = M.braindecode_forward(model, Xn, device)
+        z, logits = M.braindecode_forward(model, Xn, device, groups=data["subject"])
         extra = dict(z=z, logits=logits)
         rep = M.replay_head(model, z, u.backbone, device)                                     # gate 3, all rows
         err = float(np.max(np.abs(rep - logits)))
@@ -405,11 +406,11 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
     fresh = rebuild(spec, device)
     fresh.load_state_dict(torch.load(out / "ckpt.pt", map_location="cpu", weights_only=True))
     if u.backbone == "tsmnet":
-        S2 = M.tsmnet_prebn(fresh, data["X"][masks["target"]], device).numpy()
+        S2 = M.tsmnet_prebn(fresh, data["X"][masks["target"]], device, groups=subj[masks["target"]]).numpy()
         replay_ok = bool(np.array_equal(S2, extra["S"][masks["target"]]))
     else:
         fresh.to(device)
-        z2, _ = M.braindecode_forward(fresh, Xn[masks["target"]], device)
+        z2, _ = M.braindecode_forward(fresh, Xn[masks["target"]], device, groups=subj[masks["target"]])
         replay_ok = bool(np.array_equal(z2, extra["z"][masks["target"]]))
     if not replay_ok:
         raise ProvenanceError("self-replay of target features is not bit-exact")
@@ -425,6 +426,9 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
     # target-side sanity lives in its own file, read only by scripts/summarize_w1.py after the fleet
     write_json(out / "sanity_target.json", dict(
         unit=uid, sanity_eval_bacc=sanity, sanity_eval_n=int(ev.sum()),
+        sanity_eval_recall={int(k): float(np.mean(extra["logits"][ev].argmax(1)[data["y"][ev] == k] == k))
+                            for k in range(K) if np.any(data["y"][ev] == k)},
+        sanity_eval_classes_present=int(len(np.unique(data["y"][ev]))),
         sanity_note=("TSMNet: each target session re-centred on its own label-set trials (standard TSMNet inference)"
                      if u.backbone == "tsmnet" else "eval-mode network, source normalisation")))
     best_ep = select_epoch(hist)
@@ -438,10 +442,21 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
         status="ok", unit=uid, wave=wave, git_sha=sha, code_sig=code_sig(), cache_manifest_sha256=sha256_file(manifest),
         torch=torch.__version__, python=platform.python_version(), gpu=gpu, host=socket.gethostname(),
         slurm_job=os.environ.get("SLURM_JOB_ID"), seconds=round(time.time() - t_start, 1),
-        replay_bit_exact=replay_ok, cache_files=cache_hashes, files=files))
+        replay_bit_exact=replay_ok, cache_files=cache_hashes, cpu=_cpu_model(), threads=torch.get_num_threads(),
+        files=files))
     log(f"DONE {uid} best_epoch={best_ep} val_bacc={metrics['best_val_bacc']:.3f} ({time.time() - t_start:.0f}s)")
     logf.close()
     return dict(status="ok", unit=uid)
+
+
+def _cpu_model() -> str:
+    try:
+        for line in open("/proc/cpuinfo"):
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return platform.processor()
 
 
 def rebuild(spec: dict, device):

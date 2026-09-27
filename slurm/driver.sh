@@ -13,7 +13,7 @@
 #      squeue -u "$USER" -h -o '%i %j' | awk '$2 ~ /^fpg-W1-/ {print $1}' | xargs -r scancel
 set -uo pipefail
 WAVE=${1:?usage: fpgem_driver.sh WAVE UNITS_FILE}; UNITS_FILE=${2:?usage: fpgem_driver.sh WAVE UNITS_FILE}
-REPO=${FPGEM_REPO:-/home/infres/yinwang/CMI_AAAI/FP-GEM}
+REPO=${FPGEM_REPO:?set FPGEM_REPO to the launch worktree <store>/launch/<sha12>}
 STORE=${FPGEM_STORE:-/home/infres/yinwang/fpgem_store}   # NFS; never /tmp (node-local)
 CAP=${FPGEM_CAP:-8}            # HARD cap on concurrent fpg-* SLURM tasks (user authorization)
 PREFIX=fpg-                    # every job of this project: fpg-<wave>-<unit>, driver job fpg-drv-<wave>
@@ -23,11 +23,16 @@ UNIT_SBATCH="$REPO/slurm/unit.sbatch"
 CTL="$STORE/control"; ATT="$CTL/attempts/$WAVE"
 mkdir -p "$STORE/logs" "$ATT" || exit 2
 log(){ printf '%s [drv %s] %s\n' "$(date -Is)" "$WAVE" "$*"; }
-is_done(){ [ -s "$1" ] && grep -q '"status": "ok"' "$1"; }   # DONE.json written last + atomically by the runner
+# DONE.json is written last + atomically by the runner; it counts only if produced by THIS launch commit
+is_done(){ [ -s "$1" ] && grep -q '"status": "ok"' "$1" && grep -q "\"git_sha\": \"$LAUNCH_SHA\"" "$1"; }
+clean_tree(){ [ -z "$(git -C "$REPO" status --porcelain --untracked-files=all -- fpgem scripts configs slurm)" ]; }
 
 cd "$REPO" || exit 2
 LAUNCH_SHA=$(git rev-parse HEAD) || { log "REFUSE: no commit in $REPO"; exit 2; }
-[ -z "$(git status --porcelain --untracked-files=no)" ] || { log "REFUSE: tracked changes in $REPO"; exit 2; }
+[ "$(basename "$REPO")" = "${LAUNCH_SHA:0:12}" ] || { log "REFUSE: $REPO is not the launch worktree of ${LAUNCH_SHA:0:12}"; exit 2; }
+[ -z "${FPGEM_EXPECT_SHA:-}" ] || [ "${LAUNCH_SHA:0:${#FPGEM_EXPECT_SHA}}" = "$FPGEM_EXPECT_SHA" ] || { log "REFUSE: HEAD ${LAUNCH_SHA:0:12} != expected $FPGEM_EXPECT_SHA"; exit 2; }
+[ "$(realpath "$0")" = "$(realpath "$REPO/slurm/driver.sh")" ] || { log "REFUSE: driver script is not the one inside $REPO"; exit 2; }
+clean_tree || { log "REFUSE: uncommitted/untracked files under fpgem scripts configs slurm in $REPO"; exit 2; }
 [ -f "$UNIT_SBATCH" ] || { log "REFUSE: missing $UNIT_SBATCH"; exit 2; }
 mapfile -t UNITS < <(grep -vE '^[[:space:]]*(#|$)' "$UNITS_FILE"); N=${#UNITS[@]}
 [ "$N" -gt 0 ] || { log "REFUSE: empty unit list $UNITS_FILE"; exit 2; }
@@ -35,19 +40,27 @@ mapfile -t UNITS < <(grep -vE '^[[:space:]]*(#|$)' "$UNITS_FILE"); N=${#UNITS[@]
 # single-driver lock: mkdir is atomic on NFS; a lock whose heartbeat is >10 min old is stale (driver was SIGKILLed)
 LOCK="$CTL/driver.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
-  if [ -n "$(find "$CTL/driver.state" -mmin -10 2>/dev/null)" ]; then log "REFUSE: live driver ($(cat "$CTL/driver.state"))"; exit 2; fi
-  log "taking over stale lock"
+  holder=$(cat "$LOCK/job" 2>/dev/null || echo "")
+  if [ -n "$holder" ] && [ "$holder" != "${SLURM_JOB_ID:-none}" ] && squeue -h -j "$holder" -o '%i' 2>/dev/null | grep -qx "$holder"; then
+    log "REFUSE: live driver job $holder holds the lock ($(cat "$CTL/driver.state" 2>/dev/null))"; exit 2
+  fi
+  if [ -z "$holder" ] && [ -n "$(find "$CTL/driver.state" -mmin -10 2>/dev/null)" ]; then log "REFUSE: live driver ($(cat "$CTL/driver.state"))"; exit 2; fi
+  log "taking over stale lock (holder=${holder:-unknown})"
 fi
-trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+echo "${SLURM_JOB_ID:-pid$$}" >"$LOCK/job"
+trap 'rm -f "$LOCK/job"; rmdir "$LOCK" 2>/dev/null' EXIT
 trap 'log "signal -> exit"; exit 143' TERM INT HUP
 
 log "start N=$N CAP=$CAP sha=${LAUNCH_SHA:0:12} host=$(hostname) pid=$$"
 while :; do
   if [ -e "$CTL/STOP" ] || [ -e "$CTL/STOP_$WAVE" ]; then log "STOP flag -> exit (in-flight jobs keep running)"; break; fi
   [ "$(git rev-parse HEAD)" = "$LAUNCH_SHA" ] || { log "HEAD moved -> stop submitting"; break; }
+  clean_tree || { log "launch worktree became dirty -> stop submitting"; break; }
   # ONE squeue snapshot per cycle (-r expands arrays). If squeue errors, do NOT treat it as "nothing queued":
   # that is how a driver resubmits duplicates of running units.
-  if ! Q=$(squeue -u "$USER" -h -r -o '%j' 2>&1); then log "squeue error: ${Q:0:160}"; sleep "$POLL"; continue; fi
+  if ! Q=$(squeue -u "$USER" -h -r -o '%j' 2>&1); then
+    log "squeue error: ${Q:0:160}"; touch "$CTL/driver.state" 2>/dev/null; sleep "$POLL"; continue
+  fi
   inflight=$(grep -c "^$PREFIX" <<<"$Q")
   room=$((CAP - inflight)); done_n=0; capped=0; subbed=0
   for u in "${UNITS[@]}"; do

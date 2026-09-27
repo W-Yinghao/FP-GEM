@@ -16,12 +16,27 @@ def build_tsmnet(n_classes: int, n_chans: int, n_times: int, domains, device, cf
                   device=torch.device(device))
 
 
+def group_chunks(n: int, groups, bs: int):
+    """Row slices of at most `bs` rows that never cross a group boundary and restart at each group's
+    first row, so a subject's features do not depend on which other rows are processed with it."""
+    if groups is None:
+        starts = [0]
+    else:
+        g = np.asarray(groups)
+        starts = [0] + [int(i) for i in np.flatnonzero(g[1:] != g[:-1]) + 1]
+    bounds = starts + [n]
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        for i in range(a, b, bs):
+            yield slice(i, min(i + bs, b))
+
+
 @torch.no_grad()
-def tsmnet_prebn(model: TSMNet, X: np.ndarray, device, bs: int = 256) -> torch.Tensor:
-    """Pre-BN SPD matrices S (N, d, d) float64 on CPU — identical to the first half of TSMNet.forward."""
+def tsmnet_prebn(model: TSMNet, X: np.ndarray, device, bs: int = 256, groups=None) -> torch.Tensor:
+    """Pre-BN SPD matrices S (N, d, d) float64 on CPU — identical to the first half of TSMNet.forward.
+    Pass `groups` (e.g. subject ids of contiguous rows) to batch every group from its own first row."""
     out = []
-    for i in range(0, len(X), bs):
-        x = torch.as_tensor(X[i:i + bs], dtype=torch.float32, device=device)
+    for sl in group_chunks(len(X), groups, bs):
+        x = torch.as_tensor(X[sl], dtype=torch.float32, device=device)
         h = model.cnn(x[:, None, ...])
         C = model.cov_pooling(h).to(device=model.spd_device_, dtype=torch.double)
         out.append(model.spdnet(C))
@@ -73,14 +88,15 @@ class FeatureTap:
 
 
 @torch.no_grad()
-def braindecode_forward(model, X: np.ndarray, device, bs: int = 512) -> tuple[np.ndarray, np.ndarray]:
-    """Eval-mode (feature, logits) for every row of X. Features are flattened pre-classifier inputs."""
+def braindecode_forward(model, X: np.ndarray, device, bs: int = 512, groups=None) -> tuple[np.ndarray, np.ndarray]:
+    """Eval-mode (feature, logits) for every row of X. Features are flattened pre-classifier inputs.
+    Pass `groups` to batch every group (subject) from its own first row."""
     model.eval()
     tap = FeatureTap(model)
     zs, ls = [], []
     try:
-        for i in range(0, len(X), bs):
-            x = torch.as_tensor(X[i:i + bs], dtype=torch.float32, device=device)
+        for sl in group_chunks(len(X), groups, bs):
+            x = torch.as_tensor(X[sl], dtype=torch.float32, device=device)
             logits = model(x)
             zs.append(tap.z.flatten(1).float().cpu().numpy())
             ls.append(logits.float().cpu().numpy())

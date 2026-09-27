@@ -36,7 +36,7 @@ sbatch -J fpg-cache-B14 slurm/cache.sbatch B14 1-9         # needs FPGEM_REPO / 
 python -m scripts.build_cache --dataset B14 --manifest
 # 2. units (GPU), capped at 8 concurrent SLURM tasks
 python -m scripts.make_units
-sbatch -p CPU -c 1 --mem=1G --time=4-00:00:00 -J fpg-drv-W1 --wrap "bash slurm/driver.sh W1 configs/units_W1.txt"
+sbatch -p CPU -c 1 --mem=1G --time=4-00:00:00 -J fpg-drv-W1 -o $FPGEM_STORE/logs/%x-%j.out -e $FPGEM_STORE/logs/%x-%j.err --wrap "bash $FPGEM_REPO/slurm/driver.sh W1 configs/units_W1.txt"
 ```
 
 Environment: Python 3.9, torch 2.8, braindecode 0.8, moabb 1.2, mne 1.8, geoopt 0.5.1.

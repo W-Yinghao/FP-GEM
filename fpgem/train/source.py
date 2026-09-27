@@ -99,6 +99,19 @@ def make_split(ds: str, target: int, seed: int, val_frac: float) -> dict:
     return dict(target=target, train=train, val=val, roles=D.SESSION_ROLES[ds])
 
 
+def improves(vb: float, vl: float, best: tuple) -> bool:
+    """Appendum A1 selection rule: higher validation bAcc wins; ties are broken by lower validation loss."""
+    return vb > best[0] or (vb == best[0] and vl < best[1])
+
+
+def select_epoch(hist: list) -> int:
+    best, ep = (-np.inf, np.inf), -1
+    for h in hist:
+        if improves(h["val_bacc"], h["val_loss"], best):
+            best, ep = (h["val_bacc"], h["val_loss"]), h["epoch"]
+    return ep
+
+
 def balanced_accuracy(y: np.ndarray, pred: np.ndarray, n_classes: int) -> float:
     rec = [np.mean(pred[y == k] == k) for k in range(n_classes) if np.any(y == k)]
     return float(np.mean(rec))
@@ -165,7 +178,7 @@ def train_tsmnet(u: Unit, cfg: dict, data: dict, masks: dict, device, log) -> tu
     tr, va = masks["train"], masks["val"]
     Xtr, ytr, dtr = X[tr], y[tr], dom[tr]
     rng = np.random.default_rng([u.seed, u.target, 17])
-    hist, best, best_loss, bad = [], None, np.inf, 0
+    hist, best, best_key, bad = [], None, (-np.inf, np.inf), 0
     for ep in range(tcfg["max_epochs"]):
         sched.on_epoch_begin(None)
         model.train()
@@ -182,8 +195,8 @@ def train_tsmnet(u: Unit, cfg: dict, data: dict, masks: dict, device, log) -> tu
         vl, vb = tsmnet_val(model, X[va], y[va], dom[va], device, K)
         hist.append(dict(epoch=ep, train_loss=tl / max(nb, 1), val_loss=vl, val_bacc=vb, sec=time.time() - t0))
         log(f"ep {ep:3d} train {tl / max(nb, 1):.4f} val {vl:.4f} bacc {vb:.3f} ({time.time() - t0:.1f}s)")
-        if vl < best_loss:
-            best_loss, best, bad = vl, copy.deepcopy(model.state_dict()), 0
+        if improves(vb, vl, best_key):
+            best_key, best, bad = (vb, vl), copy.deepcopy(model.state_dict()), 0
         else:
             bad += 1
         if bad >= tcfg["patience"] and ep + 1 >= tcfg["min_epochs"]:
@@ -248,7 +261,7 @@ def train_braindecode(u: Unit, cfg: dict, data: dict, masks: dict, device, log) 
         Xtr, ytr, Xva, yva = Xtr.to(device), ytr.to(device), Xva.to(device), yva.to(device)
     rng = np.random.default_rng([u.seed, u.target, 17])
     bs = bcfg["batch_size"]
-    hist, best, best_loss, bad = [], None, np.inf, 0
+    hist, best, best_key, bad = [], None, (-np.inf, np.inf), 0
     for ep in range(tcfg["max_epochs"]):
         model.train()
         t0, tl, nb = time.time(), 0.0, 0
@@ -269,8 +282,8 @@ def train_braindecode(u: Unit, cfg: dict, data: dict, masks: dict, device, log) 
         vb = balanced_accuracy(yva.cpu().numpy(), vlog.argmax(1).cpu().numpy(), K)
         hist.append(dict(epoch=ep, train_loss=tl / max(nb, 1), val_loss=vl, val_bacc=vb, sec=time.time() - t0))
         log(f"ep {ep:3d} train {tl / max(nb, 1):.4f} val {vl:.4f} bacc {vb:.3f} ({time.time() - t0:.1f}s)")
-        if vl < best_loss:
-            best_loss, best, bad = vl, copy.deepcopy(model.state_dict()), 0
+        if improves(vb, vl, best_key):
+            best_key, best, bad = (vb, vl), copy.deepcopy(model.state_dict()), 0
         else:
             bad += 1
         if bad >= tcfg["patience"] and ep + 1 >= tcfg["min_epochs"]:
@@ -380,7 +393,7 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
     # ---------------- descriptive sanity (pre-reg §7): evaluation session/night of the target
     ev = masks["target"] & (D.session_index(u.ds, data["session"]) == 1) & (data["y"] >= 0)
     pred = extra["logits"][ev].argmax(1)
-    best_ep = int(np.argmin([h["val_loss"] for h in hist]))
+    best_ep = select_epoch(hist)
     metrics = dict(
         unit=uid, sanity_eval_bacc=balanced_accuracy(data["y"][ev], pred, K), sanity_eval_n=int(ev.sum()),
         sanity_note=("TSMNet: each target session re-centred on its own unlabeled data (standard TSMNet inference)"

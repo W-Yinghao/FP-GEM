@@ -96,6 +96,8 @@ def validate_config(cfg: dict) -> None:
             problems.append(f"{key} cache window")
         if list(c["model_window_s"]) != [0.5, 3.5]:
             problems.append(f"{key} model window")
+        if c["moabb"] != spec["moabb"] or c.get("moabb_kwargs", {}) != spec["kwargs"]:
+            problems.append(f"{key} moabb dataset/kwargs")
         if c["classes"] != spec["classes"] or c["sfreq"] != mi.SFREQ:
             problems.append(f"{key} classes/sfreq")
         if (c["channels"] or None) != spec["channels"]:

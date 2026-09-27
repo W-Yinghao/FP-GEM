@@ -11,6 +11,7 @@ import csv
 import json
 import os
 import re
+import socket
 from pathlib import Path
 
 import numpy as np
@@ -107,7 +108,7 @@ def build_recording(subject: int, night: int, out: Path | None = None) -> Path:
         raise RuntimeError(f"{psg.name}: non-finite samples")
     out = out or cache_dir("Sleep") / f"sub{subject:02d}_n{night}.npz"
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f"{out.stem}.{os.getpid()}.tmp.npz")          # unique per writer
+    tmp = out.with_name(f"{out.stem}.{socket.gethostname()}.{os.getpid()}.tmp.npz")   # unique per writer
     np.savez(tmp, X=X, y=lab[idx], record_index=idx.astype(np.int32),
              order_in_session=np.arange(len(idx), dtype=np.int32),
              subject=np.full(len(idx), subject, dtype=np.int16), night=np.full(len(idx), night, dtype=np.int8),
@@ -122,7 +123,9 @@ def load_subject(subject: int, nights=None, channels=MODEL_CHANNELS) -> dict:
     """All cached epochs of `subject` for `nights` (default: every night the subject has). Missing cache
     files raise. Labels: 0..4, -1 for unscored/movement epochs (kept, never used for training/scoring)."""
     recs = recordings()
-    nights = nights or sorted(n for (s, n) in recs if s == subject)
+    nights = sorted(n for (s, n) in recs if s == subject) if nights is None else list(nights)
+    if not nights:
+        raise FileNotFoundError(f"Sleep subject {subject}: no nights")
     parts = []
     for n in nights:
         if (subject, n) not in recs:
@@ -138,7 +141,7 @@ def load_subject(subject: int, nights=None, channels=MODEL_CHANNELS) -> dict:
         X=np.ascontiguousarray(np.concatenate([z["X"][:, channels] for z in parts])),
         y=y,
         y_orig=y.copy(),
-        in_label_set=np.ones(len(y), dtype=bool),
+        in_label_set=y >= 0,                      # same meaning for every dataset: labelled and in the label set
         subject=cat("subject").astype(np.int64),
         session=np.array([str(int(v)) for v in cat("night")]),
         run=np.array([str(int(v)) for v in cat("night")]),
@@ -162,8 +165,9 @@ def write_manifest() -> Path:
         raise RuntimeError(f"{d}: temporary files present; a builder is still running")
     files = sorted(d.glob("sub*_n*.npz"))
     expected = {f"sub{s:02d}_n{n}.npz" for (s, n) in recordings()}
-    if {f.name for f in files} != expected:
-        raise RuntimeError(f"Sleep cache incomplete: missing {sorted(expected - {f.name for f in files})}")
+    names = {f.name for f in files}
+    if names != expected:
+        raise RuntimeError(f"Sleep cache mismatch: missing {sorted(expected - names)}, unexpected {sorted(names - expected)}")
     man = {f.name: sha256_file(f) for f in files}
     p = d / "MANIFEST.json"
     with open(p, "w") as f:

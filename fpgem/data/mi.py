@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from pathlib import Path
 
 import numpy as np
@@ -144,7 +145,7 @@ def build_subject(key: str, subject: int, out: Path | None = None) -> Path:
 
     out = out or cache_dir(key) / f"sub{subject:02d}.npz"
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f"{out.stem}.{os.getpid()}.tmp.npz")          # unique per writer
+    tmp = out.with_name(f"{out.stem}.{socket.gethostname()}.{os.getpid()}.tmp.npz")   # unique per writer
     for k, v in dict(session=session, run=run, phase=phase).items():
         if v.dtype.kind != "U":
             raise RuntimeError(f"{k} has dtype {v.dtype}; must be unicode")
@@ -196,8 +197,9 @@ def write_manifest(key: str) -> Path:
         raise RuntimeError(f"{d}: temporary files present; a builder is still running")
     files = sorted(d.glob("sub*.npz"))
     expected = {f"sub{s:02d}.npz" for s in SPECS[key]["subjects"]}
-    if {f.name for f in files} != expected:
-        raise RuntimeError(f"{key} cache incomplete: missing {sorted(expected - {f.name for f in files})}")
+    names = {f.name for f in files}
+    if names != expected:
+        raise RuntimeError(f"{key} cache mismatch: missing {sorted(expected - names)}, unexpected {sorted(names - expected)}")
     man = {f.name: sha256_file(f) for f in files}
     p = d / "MANIFEST.json"
     with open(p, "w") as f:

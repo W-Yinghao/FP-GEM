@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import socket
 import sys
 import traceback
@@ -19,8 +20,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     from fpgem.paths import unit_dir
     from fpgem.provenance import write_json
-    from fpgem.train.source import run_unit
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))       # SLURM time limit / scancel -> recorded
     try:
+        from fpgem.train.source import Unit, run_unit
+        if Unit.parse(a.unit).uid != a.unit:
+            raise ValueError(f"non-canonical unit id {a.unit}")
         res = run_unit(a.unit, wave=a.wave)
     except BaseException as e:
         d = unit_dir(a.wave, a.unit)

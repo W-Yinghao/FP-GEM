@@ -437,7 +437,8 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
                    n_rows=dict(target=int(masks["target"].sum()), source=int((~masks["target"]).sum())),
                    history=hist)
     write_json(out / "metrics.json", metrics)
-    files = {f.name: sha256_file(f) for f in sorted(out.iterdir()) if f.suffix in (".pt", ".npz", ".json") and f.name != "DONE.json"}
+    files = {f.name: sha256_file(f) for f in sorted(out.iterdir())
+             if f.suffix in (".pt", ".npz", ".json") and f.name != "DONE.json" and not f.name.startswith("FAILED_")}
     write_json(done, dict(
         status="ok", unit=uid, wave=wave, git_sha=sha, code_sig=code_sig(), cache_manifest_sha256=sha256_file(manifest),
         torch=torch.__version__, python=platform.python_version(), gpu=gpu, host=socket.gethostname(),

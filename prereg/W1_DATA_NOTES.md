@@ -34,3 +34,6 @@
   braindecode 512) to reproduce the dumps bit-exactly on the same GPU/CPU type.
 - **CPU dependence of `S`.** TSMNet's SPD layers run in float64 on CPU (eigh). `DONE.json` records the CPU
   model and thread count; bit-exact replays of `S` are only guaranteed on the same CPU model and threads.
+- **`in_label_set`** means "labelled and inside the task's label set" (`y >= 0`) for every dataset: B14-c2
+  feet/tongue trials and unscored Sleep epochs are `False`. Adaptation batches are defined by session/night
+  (all rows), never by this flag; W1 uses it only for TSMNet re-centring of B14-c2 domains.

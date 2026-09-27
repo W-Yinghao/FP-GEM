@@ -80,8 +80,8 @@ def build_subject(key: str, subject: int, out: Path | None = None) -> Path:
         raise RuntimeError(f"{key} s{subject}: non-finite samples")
     cls = {c: i for i, c in enumerate(spec["classes"])}
     yi = np.array([cls[v] for v in y], dtype=np.int16)
-    session = meta["session"].astype(str).to_numpy()
-    run = meta["run"].astype(str).to_numpy()
+    session = meta["session"].astype(str).to_numpy().astype("U")   # fixed-width unicode: loadable without pickle
+    run = meta["run"].astype(str).to_numpy().astype("U")
     if not (meta["subject"].to_numpy() == subject).all():
         raise RuntimeError("MOABB returned another subject")
     # chronological indices: MOABB orders session -> run (insertion order) -> events in time
@@ -101,6 +101,9 @@ def build_subject(key: str, subject: int, out: Path | None = None) -> Path:
     out = out or cache_dir(key) / f"sub{subject:02d}.npz"
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.stem + ".tmp.npz")
+    for k, v in dict(session=session, run=run, phase=phase).items():
+        if v.dtype.kind != "U":
+            raise RuntimeError(f"{k} has dtype {v.dtype}; must be unicode")
     np.savez(tmp, X=X, y=yi, session=session, run=run, phase=phase, order_in_session=order_in_session,
              order_in_run=order_in_run, subject=np.full(len(yi), subject, dtype=np.int16),
              sfreq=np.float32(SFREQ), t0=np.float32(CACHE_T0), channels=np.array(ch_names),

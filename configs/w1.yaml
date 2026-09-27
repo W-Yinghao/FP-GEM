@@ -1,0 +1,93 @@
+# W1 — source retraining + complete per-trial dumps. Single source of truth for the W1 fleet.
+# Frozen together with prereg/W1_SOURCE_RETRAIN_FROZEN.md. Any change after the freeze commit
+# requires a dated appendum in prereg/ BEFORE the affected units run.
+wave: W1
+seeds: [0, 1, 2]
+
+datasets:
+  B14:
+    moabb: BNCI2014_001
+    classes: [left_hand, right_hand, feet, tongue]
+    label_sets:
+      c4: [left_hand, right_hand, feet, tongue]
+      c2: [left_hand, right_hand]
+    channels: null                 # all 22 EEG channels, MOABB order
+    subjects: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    sessions: {adapt: 0train, eval: 1test}
+    sfreq: 250
+    band_hz: [4.0, 36.0]           # IIR (MOABB default: 4th-order Butterworth, forward-backward) on continuous raw
+    cache_window_s: [-2.0, 4.0]    # relative to cue; 1500 samples cached (pre-cue kept for later waves)
+    model_window_s: [0.5, 3.5]     # 750 samples fed to the models
+  Lee:
+    moabb: Lee2019_MI
+    moabb_kwargs: {train_run: true, test_run: true}   # offline + online phase of each session
+    classes: [left_hand, right_hand]
+    label_sets:
+      c2: [left_hand, right_hand]
+    channels: [FC5, FC3, FC1, FC2, FC4, FC6, C5, C3, C1, Cz, C2, C4, C6, CP5, CP3, CP1, CPz, CP2, CP4, CP6]
+    subjects: all                  # 1..54
+    sessions: {adapt: "0", eval: "1"}
+    sfreq: 250                     # resampled from 1000 Hz after epoching (MOABB)
+    band_hz: [4.0, 36.0]
+    cache_window_s: [-2.0, 4.0]
+    model_window_s: [0.5, 3.5]
+  Sleep:
+    source: sleep-edf/sleep-cassette
+    classes: [W, N1, N2, N3, REM]  # stage 3 + stage 4 -> N3
+    label_sets:
+      c5: [W, N1, N2, N3, REM]
+    channels: [EEG Fpz-Cz, EEG Pz-Oz, EOG horizontal]   # cached; models use the two EEG channels
+    model_channels: [EEG Fpz-Cz, EEG Pz-Oz]
+    sfreq: 100
+    band_hz: [0.3, 35.0]           # MNE FIR default design, on continuous raw
+    epoch_s: 30
+    crop: lights_off_plus_9h       # label-free: [LightsOff, LightsOff + 9 h) from SC-subjects.xls, same rule for every night
+    nights: {adapt: 1, eval: 2}
+    targets: paired                # the 75 subjects with both nights; single-night subjects are source-only
+
+backbones:
+  tsmnet:                          # Kobler et al. 2022 (BSD-3, vendored in fpgem/vendor/spdnets)
+    applies_to: [B14, Lee]
+    temporal_filters: 4
+    spatial_filters: 40
+    subspacedims: 20
+    temp_cnn_kernel: 25
+    bnorm: spddsbn                 # domain-specific SPD batch norm, SCALAR dispersion
+    domain: subject_session
+    optimizer: {name: riemannian_adam, lr: 1.0e-3, weight_decay: 1.0e-4}   # no decay on BiMap W and SPD means
+    batch: {domains_per_batch: 5, per_domain: 10}
+    bn_momentum_scheduler: {tau0: 0.85, epochs_offset: 10}
+    input_scaling: microvolt       # no per-channel standardization (ReEig threshold is scale-dependent)
+  eegnet:                          # braindecode EEGNetv4 (BSD-3)
+    applies_to: [B14, Lee]
+    F1: 8
+    D: 2
+    F2: 16
+    kernel_length: 64
+    drop_prob: 0.25
+    optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
+    batch_size: 64
+    input_scaling: source_channel_standardization
+  chambon:                         # braindecode SleepStagerChambon2018 (BSD-3)
+    applies_to: [Sleep]
+    n_conv_chs: 8
+    dropout: 0.25
+    optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
+    batch_size: 128
+    loss: class_weighted_ce        # inverse class frequency on the unit's source-train epochs
+    input_scaling: source_channel_standardization
+
+training:
+  protocol: leave_one_subject_out
+  val_fraction_subjects: 0.2       # participant-level validation, drawn with rng([seed, target])
+  max_epochs: 100
+  min_epochs: 30
+  patience: 20                     # epochs without val-loss improvement (after min_epochs)
+  selection: min_val_loss          # restore best-val-loss weights; target data never used
+  deterministic: true              # CUBLAS_WORKSPACE_CONFIG=:4096:8, cudnn deterministic, TF32 off
+
+dump:
+  target_all_trials: true          # both sessions / nights, incl. unscored sleep epochs
+  source_all_trials: true          # every source-train and source-val trial
+  float_dtype: float32
+  spd_dtype: float64               # TSMNet pre-BN SPD matrices

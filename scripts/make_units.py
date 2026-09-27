@@ -13,8 +13,8 @@ def main():
     ids = [u.uid for u in units]
     if len(ids) != len(set(ids)):
         raise RuntimeError("duplicate unit ids")
-    # schedule long units first so the tail of the fleet is short
-    order = {"Lee": 0, "Sleep": 1, "B14": 2}
+    # Sleep and B14 first (their caches are final first); the long Lee units follow
+    order = {"Sleep": 0, "B14": 1, "Lee": 2}
     ids.sort(key=lambda s: (order[s.split("-")[0]], s))
     p = REPO / "configs" / "units_W1.txt"
     p.write_text("\n".join(ids) + "\n")

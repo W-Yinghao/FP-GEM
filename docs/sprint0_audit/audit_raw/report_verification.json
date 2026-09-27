@@ -1,0 +1,524 @@
+{
+  "summary": "Adversarially verify the key claims of the FP-GEM Sprint-0 audit report and the cleanup script before handing to the user",
+  "agentCount": 4,
+  "logs": [],
+  "result": [
+    {
+      "checks": [
+        {
+          "claim": "§0.1: in origin/exp/h2cmi-wave0-mechanism h2cmi/tta/class_conditional.py, FP-GEM is the variant gen_iterative_diag and Joint-GEM is joint_iterative_diag",
+          "verdict": "CONFIRMED",
+          "evidence": "L127 VariantSpec(\"gen_iterative_diag\",\"gen_iterative\",\"prior_fixed\",\"diag_affine\") and L130 VariantSpec(\"joint_iterative_diag\",\"gen_iterative\",\"joint\",\"diag_affine\"). origin/exp/h2cmi-wave0-mechanism:h2cmi/run_fp_gem.py L825-835 calls fit_variant with B1A_VARIANTS_BY_NAME[\"joint_iterative_diag\"] (joint) and [\"gen_iterative_diag\"] (fixed). Right after, a guard raises an error if fixed.pi_T != source_prior.",
+          "correction": ""
+        },
+        {
+          "claim": "§0.1: the only difference is the switch at _variant_core L406 (fixed_prior = pi_S_t if spec.update==\"prior_fixed\"), which skips the prior M-step at L243-245",
+          "verdict": "CONFIRMED",
+          "evidence": "L406 is exactly `fixed_prior = pi_S_t if spec.update == \"prior_fixed\" else None`. L243 `if fixed_prior is None:`, L244 counts=r.sum(0), L245 pi_T=(counts+anchor)/(...) is the prior M-step. The two specs share responsibility=gen_iterative, kind=diag_affine and restarts=1. fit_variant seeds the fit from tta_seed plus the restart index, not the variant name. The runner passes both variants the same tta_seed. No other code path branches on update between prior_fixed and joint.",
+          "correction": ""
+        },
+        {
+          "claim": "§0.1 (task framing): kappa = (5+1) = 6",
+          "verdict": "CONFIRMED",
+          "evidence": "class_conditional.py L232: anchor = (cfg.dirichlet + cfg.prior_anchor_strength) * pi_S. h2cmi/config.py TTAConfig defaults are dirichlet=5.0 and prior_anchor_strength=1.0. results/fp_gem_main/fp_gem_config.json has the same 5.0 and 1.0, and run_fp_gem.py L814-815 passes them through, so the total pseudo-count is 6 (it acts only on the Joint branch).",
+          "correction": ""
+        },
+        {
+          "claim": "§0.1: the file is byte-identical on all FP-GEM branches (blob 270c8933), including origin/agent/fp-gem-stage2 and exp/h2cmi-review-p0-corrections",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "The file is byte-identical. The git blob id is 6db965db4f2f... on origin/exp/h2cmi-wave0-mechanism, origin/agent/fp-gem-stage2, exp/h2cmi-review-p0-corrections (local and origin), exp/h2cmi-responsibility-qxu (local and origin), local exp/h2cmi-wave0-mechanism, 278fc85e and e6c49156. The last commit to touch the file on any ref is 15838783 (2026-06-21). However, 270c8933 is not a git blob id (`git cat-file` rejects it). It is the prefix of the file's SHA-256 (270c89335756ea0f...).",
+          "correction": "Say 'sha256 270c8933' (as T1 CSV row G13 correctly does) or 'git blob 6db965db'; the report's '(blob 270c8933)' mislabels the hash type."
+        },
+        {
+          "claim": "§0.1: root /home/infres/yinwang/CMI_AAAI/h2cmi is the earlier Project-A version with no FP-GEM code (no run_fp_gem.py)",
+          "verdict": "CONFIRMED",
+          "evidence": "There is no h2cmi/run_fp_gem* and `find -iname '*fp_gem*'` returns nothing. The root h2cmi/tta/class_conditional.py (12258 bytes) has no B1A_VARIANTS, gen_iterative_diag or prior_fixed. `git grep` on HEAD (agent/cedar-eeg-p0) finds no fp_gem, FP-GEM or gen_iterative_diag under h2cmi. The last commit touching h2cmi on HEAD is 183f27fc (2026-07-07), 'Project A Step 20: final observability-contract closeout'.",
+          "correction": ""
+        },
+        {
+          "claim": "§1.1(b): origin/exp/h2cmi-wave0-mechanism (@df47753e) and origin/agent/fp-gem-stage2 (@04a40e4e) diverged at e6c49156 and neither contains the other",
+          "verdict": "CONFIRMED",
+          "evidence": "git merge-base returns e6c491560c14... (2026-07-11, 'Shard FP-GEM fleet under scheduler submit limit'). `--is-ancestor` is false in both directions. wave0 has 8 commits the other lacks, and stage2 has 22. The cited commits sit where the report says: 3bba1d0b, 7b48813e and b5fb5158 only in wave0; 3b52e202, a39a93a2, 1ce61180, 687003ff, 722e33cd, 4be89b0d, 1b89a32d and ab03bd7a only in stage2. FINAL_FP_GEM_STORY_FREEZE.md and FP_GEM_EVIDENCE_HIERARCHY.md are under h2cmi/results/fp_gem_main on wave0.",
+          "correction": ""
+        },
+        {
+          "claim": "§1.1(b): exp/h2cmi-review-p0-corrections (@5bc9bf07) and exp/h2cmi-responsibility-qxu (@09e92499) are contained in both main branches",
+          "verdict": "CONFIRMED",
+          "evidence": "`--is-ancestor` is true for all 8 combinations: local and origin refs of both branches, each checked against both tips. Local and origin tips are the same (5bc9bf07, 09e92499).",
+          "correction": ""
+        },
+        {
+          "claim": "§1.1 local state: local exp/h2cmi-wave0-mechanism is 26 commits behind and checked out at H2CMI/CMI_AAAI_qxu; fp-gem-stage2 has no local branch and has a full clone at H2CMI/.codex_p12_launch_5b71ee8",
+          "verdict": "CONFIRMED",
+          "evidence": "Local a8b93682 is 26 behind and 0 ahead. `git worktree list` shows H2CMI/CMI_AAAI_qxu on [exp/h2cmi-wave0-mechanism]. Only remotes/origin/agent/fp-gem-stage2 exists. .codex_p12_launch_5b71ee8 has its own .git directory (common-dir .git) and HEAD agent/fp-gem-stage2 @04a40e4.",
+          "correction": ""
+        },
+        {
+          "claim": "§0.3/(c): the last commit touching h2cmi/ on any ref is 04a40e4e (2026-07-27 17:08)",
+          "verdict": "CONFIRMED",
+          "evidence": "`git log --all -- h2cmi` in the main repo, sorted by commit and author date, gives 04a40e4e as newest: 2026-07-27 17:08:28 +0200, 'Cho runner: force fresh source training'. The next two are ab03bd7a (16:20) and 1b89a32d (16:19). The standalone clones have nothing newer under h2cmi: .codex_p12_launch_5b71ee8 is also 04a40e4, .codex_p12_launch_f34cc8b stops at f34cc8b (07-11), S2P/s2p_*_launch at 183f27f (07-07), and the fp_gem_p13 cache repos at 7b48813 and afa21f2 (07-13).",
+          "correction": ""
+        },
+        {
+          "claim": "§0.3/(c): the newest file mtime under ~/.cache/h2cmi_training_caches/fp_gem_* and regime_analysis_* is 2026-07-28",
+          "verdict": "CONFIRMED",
+          "evidence": "The newest regular file is regime_analysis_20260728T064406/out/regime_scatter.png at 2026-07-28 10:43 CEST. Per directory: fp_gem_cho 07-28 08:02, fp_gem_p12 07-28 08:01, fp_gem_stage2_sleep 07-28 02:10, fp_gem_ea 07-27, fp_gem_stage2 07-25. `find -newermt '2026-07-28 11:00' -type f` over the whole h2cmi_training_caches returns 0 files. FP_GEM_RESULTS_SO_FAR.md is 07-28 08:04, and its line 45 lists 71.2 / 59.0 / 66.6. Caveat: the directories fp_gem_p13/repo_afa21f2/.git and repo_7b48813/.git have dir mtime 2026-09-27 04:56. That is an audit-day side effect of git being run there, with no file content newer than July.",
+          "correction": "Optionally state 'newest FILE mtime'; two .git directory mtimes in fp_gem_p13 were bumped on 2026-09-27 by audit-time git access."
+        },
+        {
+          "claim": "§1.2: the runner and data-loader files live under h2cmi/ on the branches",
+          "verdict": "CONFIRMED",
+          "evidence": "run_fp_gem.py, run_w2_p0.py, run_w2_sleep.py, eval/p0_eval.py, p0_source.py, data/real_eeg.py, data/sleep_eeg.py and density/student_t_mixture.py are on both branches. run_fp_gem_cho.py, run_ea_b14_lee.py, run_fp_gem_stage2.py and fp_gem_stage2_lib.py are only on origin/agent/fp-gem-stage2. run_fp_gem_prevalence.py is only on origin/exp/h2cmi-wave0-mechanism. This fits the divergence.",
+          "correction": "Could note which branch each runner lives on (Cho/EA/Stage-2 only on fp-gem-stage2; prevalence only on wave0)."
+        },
+        {
+          "claim": "§1.3: artifacts not in git (345 P12 TSMNet checkpoints; Cho and EA results uncommitted; regime_analysis scripts only in the cache; p0_w2_primary_all.jsonl sha matches p0_raw.sha256; 225 Sleep bundles; p0_sleep_cache 3.1G; p7_w1_repaired salvage)",
+          "verdict": "CONFIRMED",
+          "evidence": "fp_gem_p12/source_checkpoints has 345 .pt files (27 B14, 156 Cho, 162 Lee) plus 345 .json. No fp_gem_cho or fp_gem_ea result files are tracked on either branch; only the runners are. regime_analyze.py, regime_unit.py and synthetic_regime.py are absent from both branches. The sha256 of p0_w2_primary_all.jsonl is bc605da7..., which equals the entry in the committed h2cmi/results/p0_raw.sha256. p0_w2_bundles has 225 each of .pt, .moments.npz and .json. p0_sleep_cache is 3.1G. H2CMI/shard_results_salvaged/p7_w1_repaired exists. The claim of 'only copy' or 'unique' was not exhaustively checked.",
+          "correction": "source_checkpoints holds 690 entries (345 .pt + 345 .json sidecars); '345 models' is correct."
+        },
+        {
+          "claim": "§1.4: laptop-only items (FP-GEM_AAAI2027/, convergence_sim, multiclass/optimal/mechanism_sim, the fpgem package, prechecks, submission_2026-07-2*, SERVER_REPRO_CHECKLIST_REQUEST.md, fpgem_v2_math_checks.py, experiment_results_table.tex, FP_GEM_major_revision_plan*) are not on the server",
+          "verdict": "CONFIRMED",
+          "evidence": "`find` by name (excluding .git) found none of them in /home/infres/yinwang/CMI_AAAI, AAAI_2026, ICML_2026 or ~/.cache/h2cmi_training_caches. A search of the whole home directory timed out, so other home subdirectories were not searched.",
+          "correction": "Scope caveat: verified for CMI_AAAI, AAAI_2026, ICML_2026 and the h2cmi cache, not the entire home directory."
+        },
+        {
+          "claim": "§1.5: H2CMI/CMI_AAAI_p12_extract and H2CMI/paper_data are CMI-Trace/TOS 'P12 supplement extraction', unrelated to FP-GEM P12 (about 414 unique result files)",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "CMI_AAAI_p12_extract is a detached worktree at a72f533b ('Track A result note: FS-C full-strength DG-null', a CMI-Trace commit). Its ignored files are tos_cmi/results/{det_verify, tos_cmi_eeg_frozen/...}. paper_data holds nullspace_baseline.json, deployment_table_11cells.json and fig_a6_panel_b_data.json, which matches the user-memory note on the P12 supplement extraction. So its nature and misfiling are confirmed. The count of about 414 files that exist nowhere else was not checked independently.",
+          "correction": "Nature confirmed; the '~414 unique files' count is unverified (it comes from reader_parent_inventory.md), so treat that sub-claim as UNVERIFIABLE rather than wrong."
+        }
+      ]
+    },
+    {
+      "checks": [
+        {
+          "claim": "§2.2 paper column: Table 1 prints B14 FP 73.2 (11.5), Joint 71.9 (11.3); Cho FP 60.0 (7.1), Joint 59.2 (7.1); Lee FP 67.6 (9.3), Joint 66.3 (9.2)",
+          "verdict": "CONFIRMED",
+          "evidence": "paper_main.txt L869-871: 'Joint-GEM 63.7 71.9 (11.3) 59.2 (7.1) 66.3 (9.2)' / 'FP-GEM 65.6 73.2 (11.5) 60.0 (7.1) 67.6 (9.3)'.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 B14 FP-GEM artifact = 71.24 (11.48), n=9",
+          "verdict": "CONFIRMED",
+          "evidence": "From origin/exp/h2cmi-wave0-mechanism:h2cmi/results/fp_gem_main/fp_gem_per_subject.csv (sha256 215d32b6, git blob 9ecfdfcd, added in 3bba1d0b), BNCI2014_001 FP-GEM: mean 71.245, sample sd 11.480, n=9. Seed-averaging the raw fp_gem_results.csv on the same branch gives the same result.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 B14 Joint-GEM artifact = 70.94 (11.34)",
+          "verdict": "CONFIRMED",
+          "evidence": "Same CSV: mean 70.936, sd 11.337, n=9.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 Lee FP-GEM artifact = 66.56 (9.35); Lee Joint-GEM = 66.27 (9.24)",
+          "verdict": "CONFIRMED",
+          "evidence": "Same CSV, Lee2019_MI, n=54: FP-GEM 66.556 (9.348); Joint-GEM 66.272 (9.244).",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 Cho FP-GEM artifact = 58.98 (7.14); Cho Joint-GEM = 59.19 (7.13), from the Cho cache",
+          "verdict": "CONFIRMED",
+          "evidence": "~/.cache/h2cmi_training_caches/fp_gem_cho/cho_target*_seed*.json: 156 files = 52 participants x 3 seeds, all commit 04a40e4e. Seeds averaged within participant, then over 52: FP-GEM 58.978 (7.135), Joint-GEM 59.192 (7.129). The other Cho cells also match the paper: Source 52.349 (3.091), EA 52.188 (2.920), rct 59.754 (7.608), spdim_geodesic 59.658 (7.574).",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 difference column: B14 FP +1.96, B14 Joint +0.96, Cho FP +1.02, Cho Joint 0, Lee FP +1.04, Lee Joint 0",
+          "verdict": "CONFIRMED",
+          "evidence": "73.2-71.245=1.955; 71.9-70.936=0.964; 60.0-58.978=1.022; 59.192 rounds to 59.2; 67.6-66.556=1.044; 66.272 rounds to 66.3. Additional observation: every mismatching cell equals the artifact value plus a whole number of points (B14 FP +2.00, B14 Joint +1.00, Cho FP +1.00, Lee FP +1.00), and every s.d. is unchanged. A constant shift like that fits a transcription or offset error better than a different aggregation. The T1 CSV wording 'plus exactly 0.96 pp' is imprecise, because the paper value is itself rounded; the data fit +1.00 pp.",
+          "correction": "Optionally note in §2.2 that all four mismatches equal the artifact plus exactly 1 or 2 points, with the same s.d."
+        },
+        {
+          "claim": "§2.2 header 'P12 CSV sha f3e4ca69'",
+          "verdict": "CONFIRMED",
+          "evidence": "f3e4ca69... is the sha256 of the raw fp_gem_results.csv (1134 rows, all status ok) on origin/exp/h2cmi-wave0-mechanism. The per-subject CSV the report says it recomputed from has sha256 215d32b6. Both give identical numbers.",
+          "correction": "Minor: say the hash belongs to fp_gem_results.csv, not the per-subject CSV."
+        },
+        {
+          "claim": "§2.1 Sleep column recomputed: Source (identity_uniform) 65.72, EA (source_recolored_ea) 65.30, Diag-IM (latent_im_diag_uniform) 63.62, Joint-GEM (joint_geometry_uniform) 63.72, FP-GEM (fixed_iterative_geometry_uniform) 65.57; 75 participants x 3 seeds",
+          "verdict": "CONFIRMED",
+          "evidence": "H2CMI/CMI_AAAI_qxu/results/h2cmi/p0_w2_primary_all.jsonl (2250 rows, all commit 278fc85, panel W2_P0, protocol primary, 225 rows per branch, no duplicate keys). Per-subject seed means: 65.721, 65.298, 63.621, 63.721, 65.570, each with 75 subjects x 3 seeds. review_p0.report.json branch_mean_bacc gives the same values.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.1 FP-Joint = +1.849 [+1.27, +2.45], FP wins in 63/75 participants",
+          "verdict": "CONFIRMED",
+          "evidence": "My recompute gives a mean paired difference of +1.8489, with 63 wins, 12 losses and 0 ties. origin/exp/h2cmi-review-p0-corrections:h2cmi/results/review_p0.report.json W2_primary.SECONDARY_fixed_iter_minus_joint_geom has mean 0.018489, ci [0.012725, 0.024466], n=75. That CI is a bootstrap CI: my 10k percentile bootstrap gives [1.265, 2.455]. A Student-t CI would be [1.244, 2.454].",
+          "correction": "Optionally label the CI as bootstrap."
+        },
+        {
+          "claim": "§2.1 The paper's '1.9' is the difference of two rounded cells; rounding the contrast directly gives 1.8",
+          "verdict": "CONFIRMED",
+          "evidence": "65.6-63.7=1.9, while the exact contrast is 1.849, which rounds to 1.8. The other MI contrasts in the paper text (1.3/0.8/1.3) are also differences of rounded table cells.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.1 fixed_reference_oneshot_uniform (FRSC) = 69.5 is the best Sleep operator and is not reported in the paper",
+          "verdict": "CONFIRMED",
+          "evidence": "Per-subject mean 69.536 (sd 9.388). It is the highest of the 9 branches; the next is pooled_uniform at 66.000. No 69.5, FRSC or fixed-reference result appears in paper_main.txt or paper_supplement.txt; the only 'one-shot' mentions there are theory.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.1 pi_fit is the uniform prior [.2]x5, not pi_src",
+          "verdict": "CONFIRMED",
+          "evidence": "At the run commit 278fc85, h2cmi/p0_source.py L71/L78 sets pi_star = reference_prior(y, K, 'uniform'). run_w2_p0.py L127 passes it as source_prior to ClassConditionalTTA (class_conditional.py __init__ self.pi_S = source_prior). K=5 for Sleep.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.1 The paper says 225 participant-seed predictions are archived, but the raw rows contain only confusion matrices and pred_hash, with no per-trial predictions",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "There are no per-trial predictions: the rows hold only scalar metrics, occupancy and pred_hash, and p0_w2_bundles/ holds only source checkpoints (.pt, .moments.npz, sidecar json). But confusion matrices exist only for identity_uniform and joint_geometry_uniform, 450 rows in total, because CONF_BRANCHES at 278fc85 lists just those two. FP-GEM, EA, Diag-IM and FRSC rows have no confusion matrix, only pred_hash. A later 7-branch confusion replay (829d27db) is marked excluded_strict in review_p0.report.json (w2_confusion: 114 pred_hash mismatches). The supplement text is at paper_supplement.txt L1276-1278.",
+          "correction": "Say: 'raw rows hold per-(participant,seed) scalar metrics and pred_hash; confusion matrices exist only for identity_uniform and joint_geometry_uniform (FP-GEM rows have none); no per-trial predictions are stored; the 7-branch confusion replay was excluded_strict.'"
+        },
+        {
+          "claim": "§2.1 The Sleep ±30-min crop uses the hypnogram (target labels)",
+          "verdict": "CONFIRMED",
+          "evidence": "At 278fc85, h2cmi/data/sleep_eeg.py L73-78 computes nonwake = where(cls != 0) from hypnogram-annotation events, then crops to nonwake[0]-60 .. nonwake[-1]+60 epochs, which is ±30 min. This applies to target recordings too. The paper does not mention the crop.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 In the artifacts, B14 Recenter/SPDIM 72.7 > FP 71.2, so 'FP-GEM is best on B14' fails",
+          "verdict": "CONFIRMED",
+          "evidence": "B14: rct 72.737 (12.820), spdim_geodesic 72.737 (12.914), spdim_bias 72.377, FP-GEM 71.245.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.2 On Cho, FP-GEM is the lowest of the adaptation methods",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "The Cho cache gives rct 59.754, spdim_bias 59.692, spdim_geodesic 59.658, Joint-GEM 59.192, FP-GEM 58.978, Source 52.349, EA 52.188. FP-GEM is lowest among the Recenter-based methods (Recenter/SPDIM/Joint/FP), but EA, an adaptation baseline, is lower. The substantive point holds, and is stronger than stated: on Cho FP-Joint = -0.21, so the paper's '+0.8 on Cho2017' has the wrong sign in the artifacts.",
+          "correction": "Say 'lowest among the Recenter-based adaptation methods (Recenter, SPDIM, Joint-GEM); FP-Joint on Cho is -0.21, not +0.8'."
+        },
+        {
+          "claim": "§2 overview: G10 'B14 Source/EA/Recenter/SPDIM MATCH; FP, Joint MISMATCH'; G11 'Cho 5 cells MATCH; FP MISMATCH'; G12 'Lee 6 cells MATCH; FP MISMATCH'",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "G10 is confirmed: the EA cache gives B14 60.134 (11.311), paper 60.1 (11.3); Source 60.957 (10.801), paper 61.0 (10.8). G11 is confirmed. G12: only 5 Lee table cells match (Source 54.852 (4.896), EA 54.370 (4.314), Recenter 68.160 (9.995), SPDIM 67.654 (9.842), Joint 66.272 (9.244)). The T1 CSV's sixth 'MATCH' for G12 is a text claim ('trails Recenter and SPDIM', L891-893), not a table cell, so the counts in the G11 and G12 rows are not on the same basis.",
+          "correction": "G12: '5 table cells MATCH (plus 1 text claim); FP MISMATCH'."
+        },
+        {
+          "claim": "§2.2 The agent tried about 15 alternative aggregations or readouts (single seed, median, adapt/pooled set, density argmax, alpha-path, P13 q levels, Stage-2, repaired W1 encoder) and none reproduces the paper numbers",
+          "verdict": "UNVERIFIABLE",
+          "evidence": "I did not re-run the alternatives. The seed-then-subject aggregation and the sample-vs-population s.d. choice both fail to give the paper values, which suggests aggregation is not the cause. The P12 unit JSONs (~/.cache/h2cmi_training_caches/fp_gem_p12/units, 189 files) store only the fp/joint a,b parameters and one bacc per method.",
+          "correction": ""
+        }
+      ]
+    },
+    {
+      "checks": [
+        {
+          "claim": "§2.3(a) P13 geometry displacement: FP ≈1.4 like Joint — q=0.1 FP 1.414 vs Joint 1.436; q=0.9 FP 1.404 vs Joint 1.424 (fp_gem_prevalence_geometry_diagnostic.csv @b5fb5158)",
+          "verdict": "CONFIRMED",
+          "evidence": "origin/exp/h2cmi-wave0-mechanism (df47753e) and b5fb5158 hold the same file (md5 0dbfda62…). It has 972 rows, Lee2019_MI only, 162 units per q×method cell. Mean geometry_displacement_from_q05 is FP 1.414391 and Joint 1.435709 at q=0.1, and FP 1.404000 and Joint 1.424357 at q=0.9 (medians 1.405/1.423 and 1.405/1.420). The FP fitted prior is 0.5 in every row, so FP's ~1.4 shift happens with no prior update. Joint's mean fitted class-0 prior is 0.4636 / 0.4850 / 0.5007 at q=0.1/0.5/0.9.",
+          "correction": "None for the numbers; they are cell means. Two caveats. First, the file cannot tell whether the ~1.4 comes from the change in class composition or from drawing a different subsample, because there is no same-q resampling control, so 'geometry absorbs prevalence' is not shown either. Second, T9 in EXECUTION_KICKOFF_sprint0.md L96 compares against the P13 prior movement (Joint 0.46→0.50), not the geometry displacement. That comparison is still valid, so saying T9 must be redefined is stronger than the evidence supports."
+        },
+        {
+          "claim": "v1 §2.2(b) and v4 P7 cite 'geometry displacement ~1.4' from P13 as evidence about Joint's prior/geometry coupling",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "v1 REVISION_PLAN_TSP_TPAMI.md L83 table: 'Geometry displacement @ q=0.1 / 0.9 | 1.436 / 1.424 | 1.414 / 1.404' (Joint | FP), so v1 does print the FP values. L86-87: 'Joint's prior barely moves (0.46→0.50), yet the geometry shifts by 1.4 … the likelihood along the prior direction is flat, and the offset is absorbed by the geometry'. v4 REVISION_PLAN_v4_positive_claims.md L78, under P7: 'the jointly estimated prior only moves from 0.46 to 0.50; geometry displacement 1.4 (P13, already available)'.",
+          "correction": "Both documents do cite the ~1.4 as Joint-mechanism evidence. But they frame it as weak prior identifiability, where the Joint prior stays flat and the geometry absorbs the shift, not as the prior pushing the geometry. v1 §2.3 item 2 even says FP≈Joint on MI, and v1 already prints the FP values next to Joint's. The report's core point stands: FP shows the same ~1.4 with its prior fixed, so the number cannot support a Joint-specific mechanism."
+        },
+        {
+          "claim": "§2.3(b) W1 legacy (115 subjects, +0.0022) cited in v1 §2.2(e) is quarantined by w1_legacy_split_quarantine.md as legacy_split_not_confirmatory because Cho has single-class eval blocks on 52/52 targets",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "The quarantine note (added in f001a926; identical on origin/exp/h2cmi-wave0-mechanism and origin/agent/fp-gem-stage2) reads: status PASS; original REVIEW_P0 W1 MI results `legacy_split_not_confirmatory`; affected_dataset Cho2017; affected_target_subjects 52; affected_fraction 1.0; allowed_future_use diagnostic_legacy_only. The .json gives Cho2017 single-class eval 52/52 and BNCI and Lee 0. REVIEW_P0_RESULTS.md on exp/h2cmi-review-p0-corrections L39 shows fixed−joint +0.0022 [−0.0005, +0.0049], matching the report.",
+          "correction": "The quarantine status, cause and number are correct, but the section is wrong. In v1 the W1 +0.0022 paragraph is at L111 inside §2.2(c), the REVIEW_P0 block. v1 §2.2(e) (L123) is V2P_WEIGHTED. The report should say v1 §2.2(c)."
+        },
+        {
+          "claim": "§2.3(b) Repaired W1 canonical result w1_repaired_h2cmi_method_contrasts.csv (bc61ee11): FP−Joint +0.00299 [+0.00067, +0.00540]; dataset-macro +0.0053 [+0.0017, +0.0092]",
+          "verdict": "CONFIRMED",
+          "evidence": "The CSV is byte-identical at bc61ee11, origin/exp/h2cmi-wave0-mechanism and origin/agent/fp-gem-stage2 (md5 16ce2192…), and bc61ee11 adds it. Row fixed_prior_iterative_minus_joint_fit_geometry, subject_weighted: mean 0.0029919, CI [0.0006682, 0.0054042], n=115. The dataset_macro row: 0.0052633 [0.0017205, 0.0092422], n=3. interval_label is repaired_split_confirmatory.",
+          "correction": ""
+        },
+        {
+          "claim": "§2.3(c) MANUSCRIPT_NUMBERS_READY.md (f2808796) and WAVE0_MANUSCRIPT_NOTES.md exist on the server and are not cited by v1–v5",
+          "verdict": "CONFIRMED",
+          "evidence": "Both files are in origin/exp/h2cmi-wave0-mechanism and origin/agent/fp-gem-stage2 (h2cmi/results/review_completion/MANUSCRIPT_NUMBERS_READY.md and h2cmi/results/WAVE0_MANUSCRIPT_NOTES.md), and f2808796 modifies MANUSCRIPT_NUMBERS_READY.md. Grepping every /home/infres/yinwang/CMI_AAAI/FP-GEM/*.md for either name returns nothing.",
+          "correction": ""
+        },
+        {
+          "claim": "§3 B14 is 2-class LeftRight in code (real_eeg.py L72-76) while the paper says 4-class",
+          "verdict": "CONFIRMED",
+          "evidence": "In h2cmi/data/real_eeg.py (same md5 148164ab on wave0 and stage2), L72 is `from moabb.paradigms import LeftRightImagery` and L76 is `para = LeftRightImagery(fmin=FMIN, fmax=FMAX, resample=FS)`. The P12/P13 runners call this load_dataset (run_fp_gem.py L25/L632, run_fp_gem_prevalence.py L21/L546). The paper supplement §H says 'BNCI2014-001 retains its four motor-imagery classes'.",
+          "correction": ""
+        },
+        {
+          "claim": "§3 MI band/window: code 8–30 Hz, 0–2 s, per-trial per-channel z-score (real_eeg.py L33-36, L92-96) vs paper 4–38 Hz, 0.5–3.5 s",
+          "verdict": "CONFIRMED",
+          "evidence": "real_eeg.py L33 is FS=250.0, L34 FMIN,FMAX=8.0,30.0, L35 WINDOW_S=2.0 and L36 N_TIMES. L92 crops to the first N_TIMES samples, and L94-96 z-score each trial and channel over time. The main text L766-769 and supplement §H say 4–38 Hz and 0.5–3.5 s, with channel statistics estimated from the source-training partition and then frozen. The 4–38 Hz / 0.5–3.5 s settings appear only in cmi/data/moabb_data.py (L18, L27), and nothing in h2cmi imports it.",
+          "correction": "'0–2 s' means the first 2 s of MOABB's dataset interval, which is post-cue for BNCI2014_001/Lee2019."
+        },
+        {
+          "claim": "§3 MI split: only session 0, class-stratified halving by target labels (w1_repaired_split.py L80-95)",
+          "verdict": "CONFIRMED",
+          "evidence": "class_stratified_half_indices (L80-96) takes target_session = min session for the subject. For each cls in (0,1) it filters `ep.y[m] == cls` and puts the first half in adapt and the rest in eval, so it reads target labels. P12 and P13 read this split through the frozen manifest (config split.family=class_stratified_half; run_fp_gem.py imports w1_repaired_split). The paper says an earlier session adapts and a later one evaluates, and that target labels are never used.",
+          "correction": "The function ends at L96 (closing return), not L95. Trivial."
+        },
+        {
+          "claim": "§3 Sleep π_fit: paper π_src vs code uniform prior (p0_source.py get_source_p0)",
+          "verdict": "CONFIRMED",
+          "evidence": "p0_source.py L75/L82 set `pi_star = reference_prior(y, K, \"uniform\")`, and trainer.reference_prior returns np.full(K, 1/K) for any mode other than 'source_marginal'. run_w2_p0.py L123-129 passes pi_star into ClassConditionalTTA as source_prior. The fixed_iterative branch (gen_iterative_diag, update prior_fixed) freezes pi_T = pi_S (class_conditional.py L404-407). The paper's Alg. 1 and supplement set π_fit = π_src, the empirical source class-proportion vector. The files are identical on the review-p0, wave0 and stage2 branches.",
+          "correction": ""
+        },
+        {
+          "claim": "§3 Sleep: no band-pass filter (paper 0.3–35 Hz), per-epoch z-score, and hypnogram-label-based crop",
+          "verdict": "CONFIRMED",
+          "evidence": "sleep_eeg.py _load_record picks channels and resamples only if the rate is not 100 Hz (L64-66); it has no raw.filter call. `git grep filter(` over h2cmi/data/*.py and h2cmi/run_w2*.py finds nothing. L73-79 crop to ±60 epochs around the first and last non-wake epoch, taken from the hypnogram annotations (`cls != 0`), and this also applies to the target nights. L90-91 z-score each epoch and channel. The run_w2_p0 cache mode calls load_subjects, which calls _load_record. The paper supplement specifies a 0.3–35 Hz band-pass.",
+          "correction": ""
+        },
+        {
+          "claim": "§3 MI readout: frozen TSMNet linear classifier used for predictions (not density argmax + uniform π_dec per Eq 12)",
+          "verdict": "CONFIRMED",
+          "evidence": "run_fp_gem.py L928-929 compute `joint_logits = rct_model.classifier(joint.transform.apply(eval_features))` and the same for FP, then predict with argmax (L973). run_fp_gem_prevalence.py L408-409 do the same. The frozen config says the decision rule is 'pass transformed features through the same frozen TSMNet classifier; pi_fit is not injected' and names the classifier as Linear(210,2). Paper main text L759-760: 'The GEM rows use the stored Gaussian head with uniform decision weights'.",
+          "correction": ""
+        },
+        {
+          "claim": "§3 other rows: density Student-t rank-4+diag df8 floor 1e-2; Joint M-step (Σr+6π_S)/(n+6); Adam lr0.05 20×3; logdet 1, trust 1/1; source 20 epochs with val = last 20% per subject per class",
+          "verdict": "CONFIRMED",
+          "evidence": "fp_gem_config.json lists the source density as Student-t with cov_rank 4, df 8.0 and eigenvalue_floor 0.01. geometry_em has Adam, lr 0.05, 20 outer iterations × 3 steps, logdet_weight 1, trust_region_a/b 1/1, dirichlet 5 + prior_anchor 1. class_conditional.py L232 anchor = (dirichlet+anchor)·π_S and L245 pi_T = (counts+anchor)/(n+anchor.sum()), so κ=6. _source_train_val_split (run_spdim_probe.py L132-145) holds out the last round(0.2·n) of each domain×class group, and source epochs are 20.",
+          "correction": "The §3 header says everything was verified in real_eeg.py, class_conditional.py and config.py, but several rows actually come from w1_repaired_split.py, fp_gem_config.json, run_spdim_probe.py, p0_source.py and sleep_eeg.py. This is a wording issue only."
+        }
+      ]
+    },
+    {
+      "checks": [
+        {
+          "claim": "A1: the 3 coarse spdim_p6 shard worktrees (cho19_52, lee1_27, lee28_54) exist, are registered, have nothing unique, and a plain `git worktree remove` is safe",
+          "verdict": "CONFIRMED",
+          "evidence": "All 3 are listed by `git worktree list` and are under .git/worktrees/. No `locked` file exists. `git status --porcelain --ignored -uall` gives 0 lines for each, so there are not even pycache files. Each is 27M (81M total). HEAD 6a6e5b77 is in origin/agent/fp-gem-stage2 and origin/exp/h2cmi-wave0-mechanism. Each per-worktree reflog has 1 sha and it is on origin. No .slurm/.sh/.sbatch under ~/slurm_logs, ~/.cache/h2cmi_training_caches, qxu, 5b71ee8 or CS_QMI references `CMI_AAAI_spdim_`, `CMI_AAAI_p7_` or `_frozen_shards`.",
+          "correction": ""
+        },
+        {
+          "claim": "A2: the 495 untracked/ignored outputs of the 3 P7 Lee worktrees are byte-identical in shard_results_salvaged/p7_w1_repaired, so --force removal loses nothing",
+          "verdict": "CONFIRMED",
+          "evidence": "Each worktree has 165 non-pycache untracked/ignored files: 162 in results/h2cmi/p7_w1_repaired_bundles and 3 in h2cmi/results/review_completion/w1_repaired_h2cmi_shards. I compared all 495 with cmp against salvaged results_bundles (486) and h2cmi_review_completion (9): 495 matched, 0 differed. There are no duplicate basenames across the 3 worktrees and no modified tracked files. HEAD ab93820d is on both origin FP-GEM branches, and the reflog shas are on origin. The only other P7 bundle store, ~/.cache/.../p7_w1_repaired_bundles_bc61ee1 (549 files), shares 0 content hashes with the salvaged set, so the comment calling salvage the ONLY copy holds. One weakness: A2 writes the sha manifest but does not itself cmp the worktree files against salvage before --force. It relies on the prior audit.",
+          "correction": ""
+        },
+        {
+          "claim": "A3: $H/.codex_p12_launch_f34cc8b is a standalone clone (not a registered worktree) with no unique content and no live SLURM reference",
+          "verdict": "CONFIRMED",
+          "evidence": "Its .git is a directory and it is not in `git worktree list`. `status --ignored -uall` shows 21 lines, all __pycache__ .pyc. There is no stash. Every ref objectname exists in the main repo, and HEAD f34cc8b is on both origin FP-GEM branches. The origin remote is a /tmp path. Searching slurm/sh/sbatch files found no reference. A broader grep finds the path only in historical logs (fp_gem_p12/logs/smoke-893416.out) and in DIRECTORY_MAP.md. du = 54M.",
+          "correction": ""
+        },
+        {
+          "claim": "A4: $C/fp_gem_p13/repo_7b48813 is a standalone clone with nothing unique, not used by live scripts; the P13 fleet ran from repo_afa21f2",
+          "verdict": "CONFIRMED",
+          "evidence": "Standalone .git dir, not registered. Its only untracked content is 22 pycache .pyc. Refs point to 7b48813e, which is on origin/exp/h2cmi-wave0-mechanism. submission_record.json arrays all use FP_GEM_P13_REPO=.../repo_afa21f2. repo_7b48813 appears only as a provenance string (checkpoint_gate.command, gate-894726.out, COMMAND_LOG.md). analyze_fp_gem_prevalence.py reads submission_record.json but never opens the repo path. checkpoint_gate.json, logs/ and units/ (162 files) live outside the clone and are untouched. du = 46M.",
+          "correction": ""
+        },
+        {
+          "claim": "A5: find prunes .git, does not follow symlinks, and deletes only __pycache__ dirs (164 dirs / 726 .pyc / ~17M)",
+          "verdict": "CONFIRMED",
+          "evidence": "The expression parses as (-name .git -prune) -o (-type d -name __pycache__ -prune -exec rm -rf {} +). find runs in its default -P mode, so it follows no symlinks. All 4 roots are real directories, not links. The only symlink under the roots is H2CMI/CMI_AAAI_p12_extract/repos -> CMI_AAAI/repos, which is not followed. A dry run with -print instead of -exec gives 164 dirs containing exactly 726 files, all *.pyc, with no subdirs or non-pyc files. du -sc = 17,016 KiB. No repo (main, qxu, p12_extract, 5b71ee8, f34cc8b, repo_afa21f2, repo_7b48813, spdim_clean) tracks any __pycache__ file, so no tree becomes dirty. Every .pyc under regime_analysis_20260728T064406 and fp_gem_p13 has its .py source present.",
+          "correction": ""
+        },
+        {
+          "claim": "A5 has 'nothing to salvage' (Tier A)",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "23 orphan .pyc files in root CMI_AAAI/h2cmi have no .py on disk, but every one of those sources exists in some git ref. However, 4 cpython-313 .pyc files in root h2cmi were compiled from source versions that are in no commit on any ref: observability/result_index (hdr size 7283), observability/validate_results (5632), tests/test_observability_result_index (5051) and run_real_audited_grid (5532). They are the only trace of old uncommitted Project-A drafts. None is FP-GEM or paper-backing.",
+          "correction": "A5 is safe for FP-GEM/paper artifacts, but it does destroy the only (bytecode) trace of 4 uncommitted Project-A draft versions in root h2cmi/. This is negligible but not literally 'nothing'."
+        },
+        {
+          "claim": "A6: _TRASH holds nothing unique: acar/ = blobs of 9e34e09f (origin/acar), oaci report identical to fbe7e8af",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "All 12 acar/ files hash to the blobs in 9e34e09f, which is on origin/acar. The oaci report C15_REVIEWER_OBJECTION_MATRIX.md is blob 20e15499, not fbe7e8af's 66f968a6. `cmp` stops at EOF after byte 16759: the _TRASH copy has one extra trailing newline. The remaining 6 non-pyc files are .pytest_cache. du = 2.3M. No FP-GEM content.",
+          "correction": "The oaci report differs from fbe7e8af by a single trailing newline, so it is not byte-identical. The content is the same, so deletion is still harmless."
+        },
+        {
+          "claim": "A7: deleting refs/codex/turn-diffs/* loses nothing",
+          "verdict": "CONFIRMED",
+          "evidence": "There are 10 refs pointing at 5 tree objects, and no tree equals a commit tree. Against every object reachable from branches, remotes and tags (25,699 objects), each tree has exactly 4 extra blobs. Three of them (apply_cigl_docs.sh, CIGL_Project_Docs.zip, CLAUDE_CODE_COMMAND.txt) exist byte-identical by hash-object in CMI_AAAI/CIGL/bootstrap_docs/. The fourth is the trailing-newline variant of the OACI report, also in _TRASH. The for-each-ref pattern limits deletion to refs/codex/turn-diffs/, so no branch or tag is touched. Doing A6+A7+gc would lose only that newline variant.",
+          "correction": ""
+        },
+        {
+          "claim": "B1: the 8 fine spdim_p6 worktrees' only unsalvaged content is 32 SLURM logs, which are copied and verified before --force removal",
+          "verdict": "CONFIRMED",
+          "evidence": "Each worktree has 0 tracked modifications. Non-pycache untracked content is 2 results/audit files plus 4 spdim-p6-* logs, and the logs/ dir holds nothing else. All 16 results/audit files are cmp-identical in shard_results_salvaged/spdim_w1_seed0. The 32 logs have unique job-id names (889841-889856) and total 98,034 B. The script copies them, asserts count==32, cmps each one and writes SHA256SUMS before `worktree remove --force`. A glob miss makes cp fail and set -e stop the run. du total = 219M (report says ~224M).",
+          "correction": ""
+        },
+        {
+          "claim": "B2: spdim_clean_a8b9368 has only its 32 ignored logs as unique content; they are copied and verified before removal",
+          "verdict": "CONFIRMED",
+          "evidence": "It has 0 tracked modifications, and `status --ignored` shows only 32 files under slurm/logs plus pycache. The logs cover P8 4shard, P9 s12, W1 and bnci001-clean, with no subdirectories, so `cp \"$SRC\"/*` cannot silently skip anything. HEAD 493f6499 and all 11 reflog shas are on origin. Remaining references to 'spdim_clean' are committed provenance JSON/stdout inside repo_afa21f2, not live scripts. du = 34M.",
+          "correction": ""
+        },
+        {
+          "claim": "B3: all 20 qxu sleep_cache/subj*.npz have same-named byte-identical files in p0_sleep_cache, and replacing them with symlinks is safe",
+          "verdict": "CONFIRMED",
+          "evidence": "sleep_cache holds 20 files (subj00-12, 14-20). For each one, p0_sleep_cache/<same basename> exists, is a regular file (0 symlinks in p0_sleep_cache) and matches under cmp. Inodes differ and link counts are 1. The two directories are distinct real dirs (inodes 484022816 and 1282006828), so rm cannot hit the p0 copy. The `[ -L ] && continue` guard keeps a rerun idempotent and is safe under set -e. benchmark.json is not removed. The *.npz gitignore also covers the symlinks, so the qxu worktree stays clean for require_clean_git. run_w2_sleep mode_cache writes subjNN.npz only if `os.path.exists` is false, so nothing writes through the symlinks into p0_sleep_cache. Caveats: the symlinks are absolute, so they dangle if the qxu worktree is moved again, as in the 08-30 reorg. B3 also removes the only on-server duplicate of 20 of the 75 files of the paper-backing p0_sleep_cache; raw Sleep-EDF remains available for regeneration.",
+          "correction": ""
+        },
+        {
+          "claim": "B4: rm -r BTTA-DG/data removes only the preprocessed MOABB arrays (code, checkpoints, tar, patch kept)",
+          "verdict": "CONFIRMED",
+          "evidence": "data/ contains exactly 9 files (BNCI2014001/2014002/2015001 × X.npy, labels.npy, meta.csv). It has no symlinks and each X.npy has link count 1. baseline_SincAdaptNet_* dirs, *.xlsx, the tar, the patch and w1b_BNCI2014001_sub0.npy all sit outside data/. The sha256 subshell and cp --parents fail closed under set -e. du = 2.9G. None of T1/T3 CSVs references BTTA-DG data.",
+          "correction": ""
+        },
+        {
+          "claim": "B4: the deleted W1-B inputs are regenerable from the datalake via download_data.py",
+          "verdict": "UNVERIFIABLE",
+          "evidence": "download_data.py rebuilds X via moabb paradigm.get_data, which depends on the MOABB version and paradigm defaults. No run was made to confirm byte-exact regeneration. The files are the only copy, as the C05 verdict itself says. The pre-delete sha256 manifest allows later verification but does not guarantee reproduction.",
+          "correction": "Treat B4 as deleting the only copy of the W1-B inputs, and expect regeneration may not be bit-exact. Given the reviewer's BTTA-DG request, consider deferring B4."
+        },
+        {
+          "claim": "B5: the grep lists contain only failed-attempt logs, the loop deletes only listed files, and the successful p0w2pri/sec/det logs are untouched",
+          "verdict": "CONFIRMED",
+          "evidence": "Counts: p0w2rep 8447 total with 8372 matched, leaving 75; w0p2 2124 total with 2077 matched, leaving 47. All 8372 matched p0w2rep .err are one md5 and every paired .out is 0 bytes. All 2077 matched w0p2 .err are one md5, contain RuntimeError and no UserWarning, so these are real crashes, not warn_only warnings. Their .out holds only MNE boilerplate plus 'DONE W0.2 ...', and w0p2_one.slurm echoes that line unconditionally without set -e. Every .out exists, so the stat loop cannot abort midway. The delete loop reads only the two *_errlist.txt files and is further limited by a case guard to p0w2rep_*.err|w0p2_*.err, so p0w2pri_/p0w2sec_/p0w2det_ cannot match. The 4 representative files are copied into $P before deletion. Caveat: the 'expect 8372/2077' and 'expect 75/47' lines only print counts and do not abort on a mismatch.",
+          "correction": ""
+        },
+        {
+          "claim": "B5 frees ~38M (report §6 table; cleanup_verdicts says 4,888,375 B apparent)",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "Summing stat sizes over the 20,898 files gives 15,076,459 B apparent: p0w2rep .err 7,007,364, w0p2 .err 3,786,371, w0p2 .out 4,282,724. Summing per-file du -k gives 183,736 KiB on NFS with 1 MiB blocks. For comparison, the whole ~/slurm_logs is 206M on disk and 18M apparent.",
+          "correction": "B5 frees about 180M on disk (about 15 MB apparent), not 38M. The verdict's 4.9 MB apparent figure is also wrong. The B total is closer to ~4.04G."
+        },
+        {
+          "claim": "B6: deletes only the named qxu smoke files, after copying and verifying the 4 files that need to be kept",
+          "verdict": "CONFIRMED",
+          "evidence": "All 5 files and v2_bundles_smoke/ exist (2.1M, 27 files, no symlinks). None is tracked in qxu, and none is referenced on origin/exp/h2cmi-wave0-mechanism, origin/agent/fp-gem-stage2, exp/h2cmi-review-p0-corrections or exp/h2cmi-responsibility-qxu. The 4 files are cmp-verified before rm. p0_w1_smoke.jsonl is deleted without a copy, but its 18 metric rows' pred_hash values appear in p0_w1_all.jsonl, a KEEP file that is not touched. The p0_w*_all.jsonl KEEP glob does not match p0_w1_smoke.jsonl.",
+          "correction": ""
+        },
+        {
+          "claim": "All `git worktree remove` targets (A1, A2, B1, B2: 15 paths) exist and are registered worktrees; no commits are lost",
+          "verdict": "CONFIRMED",
+          "evidence": "All 15 appear in `git worktree list` and under .git/worktrees/. None has a `locked` file or per-worktree refs. Every sha in each per-worktree logs/HEAD is contained in an origin branch (0 not on remote). git is 2.52.0. `worktree remove` without --force ignores ignored files, so B2's first attempt succeeds, and it runs only after its logs are copied.",
+          "correction": ""
+        },
+        {
+          "claim": "No section deletes a paper-backing KEEP artifact (p0_sleep_cache, p0_w2_bundles, p0_w2_primary_all.jsonl, wave0_*, fp_gem_p12/cho/ea/stage2/stage2_sleep, p13 units, regime_analysis scripts, shard_results_salvaged, .codex_p12_launch_5b71ee8, repo_afa21f2)",
+          "verdict": "CONFIRMED",
+          "evidence": "Where each item stands under the script:\n- p0_sleep_cache is only read by cmp and used as the symlink target in B3.\n- p0_w2_bundles, p0_w2_primary_all.jsonl, p0_w*_all.jsonl and wave0_* are not named by any rm.\n- fp_gem_p12/cho/ea/stage2/stage2_sleep, p8_monolithic and FP_GEM_RESULTS_SO_FAR.md are not A5 roots and are not referenced by any section.\n- P13 units/, logs/ and checkpoint_gate.json are untouched. A4 removes only repo_7b48813.\n- In regime_analysis only __pycache__ is removed, and all its .pyc have .py sources.\n- shard_results_salvaged only receives new files: the A2 manifest and the B1/B2/B6 salvage dirs.\n- 5b71ee8 and repo_afa21f2 lose only ignored pycache (Tier C lines are comments).\n- FP-GEM/ is outside every root.",
+          "correction": ""
+        },
+        {
+          "claim": "The script never deletes anything listed as KEEP (§1.3 / script KEEP block)",
+          "verdict": "PARTLY_WRONG",
+          "evidence": "§1.3 lists `fp_gem_p13` as KEEP, yet A4 deletes its subdirectory repo_7b48813 and A5 deletes pycache in it. The script's KEEP block lists `$H/CMI_AAAI_qxu (worktree)`, yet B3, B4 and B6 delete or replace content inside it. A5 also deletes pycache inside KEEP regime_analysis, 5b71ee8 and repo_afa21f2. All of these are non-paper-backing sub-items, as checked above.",
+          "correction": "The KEEP entries are containers. The script deletes non-paper-backing sub-items inside them (repo_7b48813, qxu sleep_cache/smoke/BTTA-DG data, pycache). §1.3 should say 'fp_gem_p13 units/logs/gate' rather than all of fp_gem_p13."
+        },
+        {
+          "claim": "Tier C and 'optional re-filing' items are not executed",
+          "verdict": "CONFIRMED",
+          "evidence": "Lines 130-147 are all `#` comments. The dispatcher only calls \"$1\", and the listing greps `^[AB][0-9]() {`, so no C03/C08 or worktree-move code can run.",
+          "correction": ""
+        },
+        {
+          "claim": "set -e / fail-closed behaviour: each section stops on the first error",
+          "verdict": "CONFIRMED",
+          "evidence": "The script uses `set -euo pipefail` and calls the function directly as the last command (\"$1\"), not in a && or || context, so errexit stays active inside it. All salvage checks use `|| { echo ...; return 1; }`. `[ -L ] && continue` is exempt from errexit and does not abort. cp/sha256sum/grep failures abort before any rm. B2's `remove || remove --force` is intentional. Caveats: A2 and B5 print their expected counts without asserting them. A partial failure inside B6's final `rm` list would leave a partially cleaned state, but no unique data is lost.",
+          "correction": ""
+        },
+        {
+          "claim": "Report sizes: A1 81M, A2 144M, A3 54M, A4 46M, A5 17M, A6 2.3M, B1 224M, B2 34M, B3 696M, B4 2.9G",
+          "verdict": "CONFIRMED",
+          "evidence": "du: A1 3×27M, A2 3×48M, A3 54M, A4 46M, A5 17,016 KiB, A6 2.3M, B1 219M, B2 34M, B3 sleep_cache 696M, B4 data 2.9G. The only wrong size is B5 (see the B5 size check).",
+          "correction": ""
+        },
+        {
+          "claim": "No running SLURM batch job uses any of these paths",
+          "verdict": "CONFIRMED",
+          "evidence": "`squeue -u $USER` shows 1010233, 1010234, 1009757 and 1010214 (RUNNING) and 1010235 (PENDING). All run CS_QMI/ssl_pilot/slurm/run_unit.sbatch or summarize_stage.sbatch with WorkDir /home/infres/yinwang/CS_QMI/ssl_pilot and logs in CS_QMI/slurm_logs. common.sh and the sbatch files contain no reference to CMI_AAAI, h2cmi or ~/slurm_logs. No EEG_auditory jobs are present now.",
+          "correction": ""
+        },
+        {
+          "claim": "No process in the interactive allocation uses these paths",
+          "verdict": "UNVERIFIABLE",
+          "evidence": "Job 1007652 ('no-shell', CPU, nodecpu12, 2-12:48 runtime, Command=(null), WorkDir=$HOME) hosts interactive sessions, including this verifier (hostname = nodecpu12). Its only step is .extern. Checking what processes inside it have open would require ps/lsof, which the READ-ONLY rules forbid.",
+          "correction": "Before running A5, B3 or B5, confirm that no other interactive session on nodecpu12 is working in H2CMI/qxu or ~/slurm_logs."
+        }
+      ]
+    }
+  ],
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Verify"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "verify-1",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "aed8a64e418879541",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1790479921146,
+      "queuedAt": 1790479921068,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "READ-ONLY: do not modify/delete/move any file (except writing notes under /tmp/claude-34987/-home-infres-yinwang-CMI-AAAI-FP-GEM/9e6cea85-38dc-4630-9dda-0026a94b325b/scratchpad/verify/), no git checkout/switch/reset/worktree prune/remove, no SLURM submission, no ps/kill, do NOT execute CLEANUP_COMMANDS.sh or any rm. Read other branches with git -C /home/infres/yinwang/CMI_AAAI show <ref>:<path>. R…",
+      "promptFramed": true,
+      "lastProgressAt": 1790480475970,
+      "tokens": 87516,
+      "toolCalls": 38,
+      "durationMs": 554820,
+      "resultPreview": "{\"checks\":[{\"claim\":\"§0.1: in origin/exp/h2cmi-wave0-mechanism h2cmi/tta/class_conditional.py, FP-GEM is the variant gen_iterative_diag and Joint-GEM is joint_iterative_diag\",\"verdict\":\"CONFIRMED\",\"evidence\":\"L127 VariantSpec(\\\"gen_iterative_diag\\\",\\\"gen_iterative\\\",\\\"prior_fixed\\\",\\\"diag_affine\\\") and L130 VariantSpec(\\\"joint_iterative_diag\\\",\\\"gen_iterative\\\",\\\"joint\\\",\\\"diag_affine\\\"). origin/e…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "verify-2",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a612074361d2f14e7",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1790479921149,
+      "queuedAt": 1790479921069,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "READ-ONLY: do not modify/delete/move any file (except writing notes under /tmp/claude-34987/-home-infres-yinwang-CMI-AAAI-FP-GEM/9e6cea85-38dc-4630-9dda-0026a94b325b/scratchpad/verify/), no git checkout/switch/reset/worktree prune/remove, no SLURM submission, no ps/kill, do NOT execute CLEANUP_COMMANDS.sh or any rm. Read other branches with git -C /home/infres/yinwang/CMI_AAAI show <ref>:<path>. R…",
+      "promptFramed": true,
+      "lastProgressAt": 1790480228234,
+      "tokens": 105025,
+      "toolCalls": 37,
+      "durationMs": 305925,
+      "resultPreview": "{\"checks\":[{\"claim\":\"§2.2 paper column: Table 1 prints B14 FP 73.2 (11.5), Joint 71.9 (11.3); Cho FP 60.0 (7.1), Joint 59.2 (7.1); Lee FP 67.6 (9.3), Joint 66.3 (9.2)\",\"verdict\":\"CONFIRMED\",\"evidence\":\"paper_main.txt L869-871: 'Joint-GEM 63.7 71.9 (11.3) 59.2 (7.1) 66.3 (9.2)' / 'FP-GEM 65.6 73.2 (11.5) 60.0 (7.1) 67.6 (9.3)'.\",\"correction\":\"\"},{\"claim\":\"§2.2 B14 FP-GEM artifact = 71.24 (11.48), n…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "verify-3",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a7bd9e740a8b6d024",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1790480230593,
+      "queuedAt": 1790479921069,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "READ-ONLY: do not modify/delete/move any file (except writing notes under /tmp/claude-34987/-home-infres-yinwang-CMI-AAAI-FP-GEM/9e6cea85-38dc-4630-9dda-0026a94b325b/scratchpad/verify/), no git checkout/switch/reset/worktree prune/remove, no SLURM submission, no ps/kill, do NOT execute CLEANUP_COMMANDS.sh or any rm. Read other branches with git -C /home/infres/yinwang/CMI_AAAI show <ref>:<path>. R…",
+      "promptFramed": true,
+      "lastProgressAt": 1790480576537,
+      "tokens": 121121,
+      "toolCalls": 47,
+      "durationMs": 345941,
+      "resultPreview": "{\"checks\":[{\"claim\":\"§2.3(a) P13 geometry displacement: FP ≈1.4 like Joint — q=0.1 FP 1.414 vs Joint 1.436; q=0.9 FP 1.404 vs Joint 1.424 (fp_gem_prevalence_geometry_diagnostic.csv @b5fb5158)\",\"verdict\":\"CONFIRMED\",\"evidence\":\"origin/exp/h2cmi-wave0-mechanism (df47753e) and b5fb5158 hold the same file (md5 0dbfda62…). It has 972 rows, Lee2019_MI only, 162 units per q×method cell. Mean geometry_dis…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "verify-4",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "ade821fe5c2f14a22",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1790480478274,
+      "queuedAt": 1790479921070,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "READ-ONLY: do not modify/delete/move any file (except writing notes under /tmp/claude-34987/-home-infres-yinwang-CMI-AAAI-FP-GEM/9e6cea85-38dc-4630-9dda-0026a94b325b/scratchpad/verify/), no git checkout/switch/reset/worktree prune/remove, no SLURM submission, no ps/kill, do NOT execute CLEANUP_COMMANDS.sh or any rm. Read other branches with git -C /home/infres/yinwang/CMI_AAAI show <ref>:<path>. R…",
+      "promptFramed": true,
+      "lastProgressAt": 1790481436393,
+      "tokens": 176471,
+      "toolCalls": 88,
+      "durationMs": 958118,
+      "resultPreview": "{\"checks\":[{\"claim\":\"A1: the 3 coarse spdim_p6 shard worktrees (cho19_52, lee1_27, lee28_54) exist, are registered, have nothing unique, and a plain `git worktree remove` is safe\",\"verdict\":\"CONFIRMED\",\"evidence\":\"All 3 are listed by `git worktree list` and are under .git/worktrees/. No `locked` file exists. `git status --porcelain --ignored -uall` gives 0 lines for each, so there are not even pyc…"
+    }
+  ],
+  "totalTokens": 490133,
+  "totalToolCalls": 210
+}

@@ -1,0 +1,30 @@
+PASS paper_f == scipy t3 pdf
+PASS int_f=1 (quad)
+PASS int_g=1 (quad)
+PASS Var_f=3 (quad)
+PASS Var_g=300/121 (quad)
+PASS int_p1=1 (quad)
+PASS int_p2=1 (quad)
+PASS mean_p1=0 (quad)
+PASS mean_p2=0 (quad)
+PASS Var_p1=489/121 (quad)
+PASS Var_p2=174/121 (quad)
+PASS p1>=0 grid
+PASS p2>=0 grid
+PASS p1<=3f
+PASS p2<=3g
+PASS source mixture == f
+PASS W_P == g
+PASS MC KS W_P vs W_G (p>0.01)
+PASS 2/3 <= (10/11)^3
+PASS 11/10 <= 3/2
+PASS 9-6/d^2 = 489/121
+PASS 9/d^2-6 = 174/121
+PASS T#p1 != p1 (var)
+PASS S6 minimax (1,1)
+PASS S6 minimax (2,1)
+PASS S6 minimax (0.3,7)
+PASS Prop2 avg=gamma/2 all q
+PASS Gaussian ratio unbounded below (scope)
+KS 0.0023050000000000015 0.23804496306086342
+ALL_PASS 28 / 28

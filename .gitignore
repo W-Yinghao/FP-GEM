@@ -1,0 +1,23 @@
+# Reference PDFs (anonymized submission, supplement, OpenReview print with third-party reviews):
+# kept locally, not published to the public repo by default.
+docs/reference/*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Compute outputs live outside the repo (see fpgem/paths.py); guard against accidental writes here
+/runs/
+/cache/
+*.npz
+*.pt
+*.npy
+slurm-*.out
+logs/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

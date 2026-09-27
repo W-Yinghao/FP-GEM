@@ -1,0 +1,61 @@
+[   0.6s] start
+[   0.9s] f moments done
+[   1.2s] r done
+[   1.2s] ab done
+[   1.2s] ok['alpha*p1+(1-alpha)*p2=f']
+[   1.3s] # ---- specialised
+[   1.3s] p1 = 3 * f - 2 * g
+[   1.3s] Vp1 = sp.nsimplify
+[   1.3s] fn = sp.lambdify
+[   1.3s] grid = np.concatenate
+[   1.4s] rn = gn(grid)
+[   1.5s] # both worlds
+[   1.8s] vn1 = integrate.quad
+[   1.8s] witness done
+[   1.8s] S3 done
+PASS  f_is_student_t3_pdf
+PASS  int_f=1
+PASS  E_f=0
+PASS  Var_f=3
+PASS  int_g=1
+PASS  Var_g=3/d^2
+PASS  r_closed_form
+PASS  r(0)=d
+PASS  r(inf)=d^-3
+PASS  frac_decreasing_in_u2
+PASS  beta/alpha=2/3
+PASS  2/3<=(10/11)^3
+PASS  (10/11)^3==d^-3
+PASS  (1-b)/(1-a)=3/2
+PASS  11/10<=3/2
+PASS  alpha*p1+(1-alpha)*p2=f
+PASS  beta*p1+(1-beta)*p2=g
+PASS  int_p1=1 (sym)
+PASS  int_p2=1 (sym)
+PASS  p1=3f-2g
+PASS  p2=3g-2f
+PASS  int_p1=1
+PASS  int_p2=1
+PASS  Var_p1=9-6/d^2=489/121
+PASS  Var_p2=9/d^2-6=174/121
+PASS  mean_p1=0
+PASS  mean_p2=0
+PASS  num_r_range_within_(d^-3,d]
+PASS  num_p1>=0
+PASS  num_p2>=0
+PASS  num_W_P==g
+PASS  num_W_G==g
+PASS  num_Var_p1~4.0413
+PASS  num_Var_p2~1.4380
+PASS  S3_unique_pos_solution_a=1_b=0
+PASS  witness_T_not_in_Gsrc(Var changes)
+PASS  S6_equalizer
+PASS  S6_value=g0g1/(g0+g1)
+PASS  S6_equal_cost=gamma/2
+PASS  Prop2_bayes_avg=gamma/2_for_all_q
+PASS  S6_num_minimax_1_1
+PASS  S6_num_minimax_1_3
+PASS  S6_num_minimax_0.2_5
+numeric: (10/11)^3 = 0.7513148009015778  d^-3 = 0.7513148009015778  Var_p1 = 489/121 4.041322314049586  Var_p2 = 174/121 1.43801652892562  Var_g = 300/121 2.479338842975207  r_min_grid = 0.751314808725186  r_max_grid = 1.0999999999999999
+ALL_PASS 43 / 43
+exit=0

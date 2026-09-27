@@ -1,0 +1,398 @@
+{
+ "A01T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   3,
+   3,
+   4,
+   5
+  ],
+  "kept_if_rejected": [
+   69,
+   69,
+   68,
+   67
+  ]
+ },
+ "A01E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   1,
+   2,
+   3,
+   1
+  ],
+  "kept_if_rejected": [
+   71,
+   70,
+   69,
+   71
+  ]
+ },
+ "A02T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   5,
+   3,
+   6,
+   4
+  ],
+  "kept_if_rejected": [
+   67,
+   69,
+   66,
+   68
+  ]
+ },
+ "A02E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   1,
+   1,
+   3,
+   0
+  ],
+  "kept_if_rejected": [
+   71,
+   71,
+   69,
+   72
+  ]
+ },
+ "A03T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   3,
+   4,
+   6,
+   5
+  ],
+  "kept_if_rejected": [
+   69,
+   68,
+   66,
+   67
+  ]
+ },
+ "A03E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   5,
+   2,
+   4,
+   4
+  ],
+  "kept_if_rejected": [
+   67,
+   70,
+   68,
+   68
+  ]
+ },
+ "A04T": {
+  "n_baseline_runs": 1,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   10,
+   5,
+   5,
+   6
+  ],
+  "kept_if_rejected": [
+   62,
+   67,
+   67,
+   66
+  ]
+ },
+ "A04E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   13,
+   15,
+   13,
+   19
+  ],
+  "kept_if_rejected": [
+   59,
+   57,
+   59,
+   53
+  ]
+ },
+ "A05T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   9,
+   6,
+   6,
+   5
+  ],
+  "kept_if_rejected": [
+   63,
+   66,
+   66,
+   67
+  ]
+ },
+ "A05E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   2,
+   7,
+   0,
+   3
+  ],
+  "kept_if_rejected": [
+   70,
+   65,
+   72,
+   69
+  ]
+ },
+ "A06T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   16,
+   15,
+   23,
+   15
+  ],
+  "kept_if_rejected": [
+   56,
+   57,
+   49,
+   57
+  ]
+ },
+ "A06E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   19,
+   17,
+   18,
+   19
+  ],
+  "kept_if_rejected": [
+   53,
+   55,
+   54,
+   53
+  ]
+ },
+ "A07T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   5,
+   6,
+   5,
+   1
+  ],
+  "kept_if_rejected": [
+   67,
+   66,
+   67,
+   71
+  ]
+ },
+ "A07E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   1,
+   3,
+   1,
+   6
+  ],
+  "kept_if_rejected": [
+   71,
+   69,
+   71,
+   66
+  ]
+ },
+ "A08T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   6,
+   6,
+   8,
+   4
+  ],
+  "kept_if_rejected": [
+   66,
+   66,
+   64,
+   68
+  ]
+ },
+ "A08E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   6,
+   4,
+   3,
+   4
+  ],
+  "kept_if_rejected": [
+   66,
+   68,
+   69,
+   68
+  ]
+ },
+ "A09T": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   19,
+   9,
+   11,
+   12
+  ],
+  "kept_if_rejected": [
+   53,
+   63,
+   61,
+   60
+  ]
+ },
+ "A09E": {
+  "n_baseline_runs": 3,
+  "n_mi_runs": 6,
+  "protocol": [
+   72,
+   72,
+   72,
+   72
+  ],
+  "artifact_flagged": [
+   7,
+   7,
+   3,
+   7
+  ],
+  "kept_if_rejected": [
+   65,
+   65,
+   69,
+   65
+  ]
+ }
+}

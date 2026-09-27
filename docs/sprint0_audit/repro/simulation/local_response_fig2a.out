@@ -1,0 +1,7 @@
+n fits 4000 local |eta_J|<=0.4: 2038 boundary |eta|>=10: 40
+FP Hessian (of mean NLL) positive-definite in 4000 of 4000
+R2 pooled componentwise (centered) 0.99831  uncentered 0.99831  per-comp l1 -0.70655 b1 0.99947
+median vector relative error 1.3685%
+ |eta|<= 0.3 count 1780
+ |eta|<= 0.4 count 2038
+ |eta|<= 0.5 count 2243

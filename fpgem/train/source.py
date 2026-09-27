@@ -407,7 +407,7 @@ def run_unit(uid: str, wave: str = "W1", cfg_path: Path | None = None) -> dict:
         torch=torch.__version__, python=platform.python_version(), gpu=gpu, host=socket.gethostname(),
         slurm_job=os.environ.get("SLURM_JOB_ID"), seconds=round(time.time() - t_start, 1),
         replay_bit_exact=replay_ok, sanity_eval_bacc=metrics["sanity_eval_bacc"], files=files))
-    log(f"DONE {uid} sanity_eval_bacc={metrics['sanity_eval_bacc']:.3f} ({time.time() - t_start:.0f}s)")
+    log(f"DONE {uid} best_epoch={best_ep} val_bacc={metrics['best_val_bacc']:.3f} ({time.time() - t_start:.0f}s)")
     logf.close()
     return dict(status="ok", unit=uid)
 

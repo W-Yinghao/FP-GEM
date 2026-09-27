@@ -49,8 +49,8 @@ def main(argv=None):
         groups[(r["dataset"], r["label_set"], r["backbone"])].append(r)
     lines = ["# W1 coverage and source-model sanity (descriptive; not endpoints)", "",
              f"units done: {len(rows)}/{len(units)}; missing: {len(missing)}", "",
-             "| dataset | labels | backbone | units | subjects | eval bAcc mean (subject-level SD) | val bAcc mean | best epoch median | minutes median | GPUs |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "| dataset | labels | backbone | units | subjects | eval bAcc mean (subject-level SD) | val bAcc mean | best epoch median | best epoch >= 95 | minutes median | GPUs |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for (ds, ls, bb), rs in sorted(groups.items()):
         by_subj = defaultdict(list)
         for r in rs:
@@ -59,8 +59,11 @@ def main(argv=None):
         gpus = sorted({r["gpu"] for r in rs})
         lines.append(f"| {ds} | {ls} | {bb} | {len(rs)} | {len(by_subj)} | {100 * subj_means.mean():.1f} ({100 * subj_means.std(ddof=1) if len(subj_means) > 1 else 0:.1f}) | "
                      f"{100 * np.mean([r['best_val_bacc'] for r in rs]):.1f} | {np.median([r['best_epoch'] for r in rs]):.0f} | "
+                     f"{sum(r['best_epoch'] >= 95 for r in rs)}/{len(rs)} | "
                      f"{np.median([r['seconds'] for r in rs]) / 60:.1f} | {', '.join(gpus)} |")
-    lines += ["", "Sanity eval bAcc: EEGNet/Chambon = eval-mode network with source normalisation; TSMNet = each target "
+    lines += ["", "`best epoch >= 95`: units whose selected epoch is at the 100-epoch cap (validation bAcc still rising; "
+              "possible under-training, reported as a QC diagnostic, not acted on).",
+              "", "Sanity eval bAcc: EEGNet/Chambon = eval-mode network with source normalisation; TSMNet = each target "
               "session re-centred on its own unlabeled data (standard TSMNet inference).", ""]
     if missing:
         lines += ["## Missing units", ""] + [f"- {m}" for m in missing]

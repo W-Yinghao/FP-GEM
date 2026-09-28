@@ -38,7 +38,3 @@ Date: 2026-09-28. No S2/S3 output exists yet. S1 is running under A1.
 3. **Secondary moment test.** Covariance: Ledoit–Wolf shrinkage of the pooled within-class source-train
    covariance in the W-projected space. Reference: χ² with rank(W) degrees of freedom. Reported as
    pre-registered; its calibration is itself an S3 outcome.
-EOF
-cd /home/infres/yinwang/CMI_AAAI/FP-GEM && git add prereg/W2_APPENDUM_A2_S2S3_definitions.md && git commit -q -m "W2 appendum A2: S2 ground truth + MI scope + designs; S3 resampling and bootstrap definitions
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" && git push -q origin main && git log --oneline -1

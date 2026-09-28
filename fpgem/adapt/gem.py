@@ -12,6 +12,9 @@ import numpy as np
 from scipy.special import logsumexp
 
 
+A_MIN, A_MAX = float(np.exp(-2.0)), float(np.exp(2.0))
+
+
 @dataclass
 class ClassGauss:
     mu: np.ndarray        # (K, D)
@@ -55,6 +58,7 @@ def _mstep_affine(z: np.ndarray, r: np.ndarray, g: ClassGauss, n_eff: float) -> 
     B = Szmu - Smu * Sz / W
     A = np.maximum(A, 1e-12)
     a = (B + np.sqrt(B * B + 4 * A * n_eff)) / (2 * A)
+    a = np.clip(a, A_MIN, A_MAX)       # W2 appendum A1: |log a| <= 2 (exact constrained optimum per coordinate)
     b = (Smu - a * Sz) / W
     return a, b
 
@@ -126,9 +130,13 @@ def gem_multibatch(zs: list, g: ClassGauss, priors: list | None, update: str, ma
 
 def pooled_affine(z: np.ndarray, src_mean: np.ndarray, src_std: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-coordinate marginal moment matching of the target batch to the source marginal."""
-    m, s = z.mean(0), np.maximum(z.std(0), 1e-8)
-    a = src_std / s
-    return a, src_mean - a * m
+    m, s = z.mean(0), z.std(0)
+    dead = (s < 1e-6 * max(float(np.median(s)), 1e-12)) | (src_std < 1e-6 * max(float(np.median(src_std)), 1e-12))
+    a = np.clip(src_std / np.where(dead, 1.0, s), A_MIN, A_MAX)
+    a[dead] = 1.0
+    b = src_mean - a * m
+    b[dead] = 0.0
+    return a, b
 
 
 def profile_info_prior(z: np.ndarray, g: ClassGauss, ridge: float = 1e-6) -> float:

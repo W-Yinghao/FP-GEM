@@ -16,9 +16,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--study", required=True, choices=["s1", "s2", "s3", "s4"])
     ap.add_argument("--unit", nargs="+", required=True)
+    ap.add_argument("--wave", default="W2")
     a = ap.parse_args(argv)
     mod = importlib.import_module(f"fpgem.adapt.{a.study}")
-    out_dir = RUNS / "W2" / a.study
+    out_dir = RUNS / a.wave / a.study
     out_dir.mkdir(parents=True, exist_ok=True)
     sha = git_sha()
     for uid in a.unit:
